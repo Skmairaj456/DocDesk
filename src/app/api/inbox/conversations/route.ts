@@ -2,7 +2,8 @@ import { ClinicRole } from "@prisma/client";
 import { AuthenticationError, requireClinicUser } from "@/lib/auth";
 import { withClinic } from "@/lib/tenant-db";
 
-export async function GET() {
+export async function GET(request: Request) {
+  void request.url;
   try {
     const context = await requireClinicUser([ClinicRole.ADMIN, ClinicRole.RECEPTIONIST]);
     const conversations = await withClinic(context, (tx) =>
