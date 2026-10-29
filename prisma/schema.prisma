@@ -1,0 +1,532 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum ClinicRole {
+  ADMIN
+  RECEPTIONIST
+  DOCTOR
+}
+
+enum AppointmentStatus {
+  BOOKED
+  ARRIVED
+  IN_CONSULTATION
+  COMPLETED
+  CANCELLED
+}
+
+enum VisitType {
+  CONSULTATION
+  FOLLOW_UP
+  REVISION
+  WALK_IN
+}
+
+enum VisitOutcome {
+  STABLE
+  IMPROVING
+  REFERRED
+  DISCHARGED
+}
+
+enum FollowUpType {
+  FOLLOW_UP
+  REVISION
+}
+
+enum FollowUpStatus {
+  OPEN
+  BOOKED
+  COMPLETED
+  CANCELLED
+}
+
+enum HoldStatus {
+  ACTIVE
+  CONFIRMED
+  EXPIRED
+  RELEASED
+}
+
+enum ConversationMode {
+  BOT
+  HUMAN
+}
+
+enum MessageDirection {
+  INBOUND
+  OUTBOUND
+}
+
+enum MessageStatus {
+  RECEIVED
+  QUEUED
+  SENT
+  DELIVERED
+  READ
+  FAILED
+}
+
+enum ScheduledJobStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+enum ConversationState {
+  IDLE
+  MAIN_MENU
+  ASKING_VISITED
+  CONSENT_REGISTRATION
+  COLLECTING_NAME
+  COLLECTING_DOB
+  COLLECTING_SEX
+  VERIFYING_EXISTING_PATIENT
+  CONFIRMING_DETAILS
+  OFFERING_MESSAGING_CONSENT
+  SELECTING_DEPARTMENT
+  SELECTING_DOCTOR
+  SELECTING_DATE
+  SELECTING_SLOT
+  CONFIRMING_BOOKING
+  MANAGING_APPOINTMENTS
+  CONFIRMING_CANCELLATION
+  CHOOSING_UPDATE_FIELD
+  MANAGING_APPOINTMENT_DETAIL
+  RESUME_PROMPT
+  HUMAN_HANDOVER
+  COMPLETED
+}
+
+enum RegistrationStatus {
+  INCOMPLETE
+  COMPLETE
+}
+
+enum AppointmentSource {
+  RECEPTION
+  DOCTOR
+  WHATSAPP
+}
+
+enum WebhookEventStatus {
+  RECEIVED
+  PROCESSED
+  FAILED
+}
+
+enum MessageSender {
+  PATIENT
+  BOT
+  STAFF
+}
+
+enum ConsentType {
+  REGISTRATION
+  MESSAGING
+}
+
+model Clinic {
+  id             String                 @id @default(uuid()) @db.Uuid
+  name           String
+  timezone       String                 @default("UTC")
+  phone          String?
+  address        String?
+  createdAt      DateTime               @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime               @updatedAt @db.Timestamptz(3)
+  memberships    Membership[]
+  departments    Department[]
+  patients       Patient[]
+  appointments   Appointment[]
+  holds          AppointmentHold[]
+  consultations  Consultation[]
+  followUps      FollowUp[]
+  conversations  WhatsAppConversation[]
+  consents       ConsentEvent[]
+  jobs           ScheduledJob[]
+  auditLogs      AuditLog[]
+  doctorProfiles DoctorProfile[]
+  scheduleBlocks ScheduleBlock[]
+  webhookEvents  WebhookEvent[]
+}
+
+model User {
+  id          String       @id @default(uuid()) @db.Uuid
+  authSubject String       @unique @db.Uuid
+  email       String
+  displayName String
+  createdAt   DateTime     @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime     @updatedAt @db.Timestamptz(3)
+  memberships Membership[]
+  auditLogs   AuditLog[]
+}
+
+model Membership {
+  id            String                 @id @default(uuid()) @db.Uuid
+  clinicId      String                 @db.Uuid
+  userId        String                 @db.Uuid
+  role          ClinicRole
+  isActive      Boolean                @default(true)
+  createdAt     DateTime               @default(now()) @db.Timestamptz(3)
+  clinic        Clinic                 @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  user          User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  doctorProfile DoctorProfile?
+  assignedChats WhatsAppConversation[] @relation("ConversationAssignee")
+
+  @@unique([clinicId, userId])
+  @@index([userId, isActive])
+  @@index([clinicId, role])
+}
+
+model Department {
+  id           String             @id @default(uuid()) @db.Uuid
+  clinicId     String             @db.Uuid
+  name         String
+  code         String?
+  isActive     Boolean            @default(true)
+  clinic       Clinic             @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  doctors      DoctorDepartment[]
+  appointments Appointment[]
+  followUps    FollowUp[]
+
+  @@unique([clinicId, name])
+  @@index([clinicId, isActive])
+}
+
+model DoctorProfile {
+  id                    String                  @id @default(uuid()) @db.Uuid
+  clinicId              String                  @db.Uuid
+  membershipId          String                  @unique @db.Uuid
+  consultationMinutes   Int                     @default(30)
+  canManageAvailability Boolean                 @default(false)
+  clinic                Clinic                  @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  membership            Membership              @relation(fields: [membershipId], references: [id], onDelete: Cascade)
+  departments           DoctorDepartment[]
+  availability          DoctorAvailability[]
+  exceptions            AvailabilityException[]
+  appointments          Appointment[]
+  holds                 AppointmentHold[]
+  consultations         Consultation[]
+  followUps             FollowUp[]
+  scheduleBlocks        ScheduleBlock[]
+
+  @@index([clinicId])
+}
+
+model DoctorDepartment {
+  doctorId     String        @db.Uuid
+  departmentId String        @db.Uuid
+  doctor       DoctorProfile @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  department   Department    @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+
+  @@id([doctorId, departmentId])
+  @@index([departmentId])
+}
+
+model Patient {
+  id              String                 @id @default(uuid()) @db.Uuid
+  clinicId        String                 @db.Uuid
+  fullName        String
+  normalizedName  String
+  phone           String
+  normalizedPhone String
+  dateOfBirth     DateTime?              @db.Date
+  sex             String?
+  registrationStatus RegistrationStatus  @default(COMPLETE)
+  createdAt       DateTime               @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime               @updatedAt @db.Timestamptz(3)
+  clinic          Clinic                 @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  appointments    Appointment[]
+  consultations   Consultation[]
+  followUps       FollowUp[]
+  conversations   WhatsAppConversation[]
+  holds           AppointmentHold[]
+  consents        ConsentEvent[]
+
+  @@index([clinicId, normalizedName])
+  @@index([clinicId, normalizedPhone])
+  @@index([clinicId, createdAt])
+}
+
+model Appointment {
+  id            String            @id @default(uuid()) @db.Uuid
+  clinicId      String            @db.Uuid
+  reference     String
+  patientId     String            @db.Uuid
+  departmentId  String            @db.Uuid
+  doctorId      String            @db.Uuid
+  startsAt      DateTime          @db.Timestamptz(3)
+  endsAt        DateTime          @db.Timestamptz(3)
+  status        AppointmentStatus @default(BOOKED)
+  visitType     VisitType         @default(CONSULTATION)
+  source        AppointmentSource @default(RECEPTION)
+  checkedInAt   DateTime?         @db.Timestamptz(3)
+  cancelledAt   DateTime?         @db.Timestamptz(3)
+  cancelReason  String?
+  createdAt     DateTime          @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime          @updatedAt @db.Timestamptz(3)
+  clinic        Clinic            @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  patient       Patient           @relation(fields: [patientId], references: [id], onDelete: Restrict)
+  department    Department        @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  doctor        DoctorProfile     @relation(fields: [doctorId], references: [id], onDelete: Restrict)
+  scheduleBlock ScheduleBlock?
+  consultation  Consultation?
+  followUpFor   FollowUp?         @relation("BookedFollowUp")
+  holds         AppointmentHold[]
+
+  @@unique([clinicId, reference])
+  @@index([clinicId, startsAt, status])
+  @@index([clinicId, doctorId, startsAt])
+  @@index([clinicId, patientId, startsAt])
+  @@index([clinicId, departmentId, startsAt])
+}
+
+model AppointmentHold {
+  id            String         @id @default(uuid()) @db.Uuid
+  clinicId      String         @db.Uuid
+  patientId     String?        @db.Uuid
+  doctorId      String         @db.Uuid
+  departmentId  String         @db.Uuid
+  startsAt      DateTime       @db.Timestamptz(3)
+  endsAt        DateTime       @db.Timestamptz(3)
+  expiresAt     DateTime       @db.Timestamptz(3)
+  status        HoldStatus     @default(ACTIVE)
+  createdAt     DateTime       @default(now()) @db.Timestamptz(3)
+  clinic        Clinic         @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  doctor        DoctorProfile  @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  patient       Patient?       @relation(fields: [patientId], references: [id], onDelete: SetNull)
+  scheduleBlock ScheduleBlock?
+  appointment   Appointment?   @relation(fields: [appointmentId], references: [id])
+  appointmentId String?        @db.Uuid
+
+  @@index([clinicId, expiresAt, status])
+}
+
+model ScheduleBlock {
+  id            String           @id @default(uuid()) @db.Uuid
+  clinicId      String           @db.Uuid
+  doctorId      String           @db.Uuid
+  startsAt      DateTime         @db.Timestamptz(3)
+  endsAt        DateTime         @db.Timestamptz(3)
+  appointmentId String?          @unique @db.Uuid
+  holdId        String?          @unique @db.Uuid
+  createdAt     DateTime         @default(now()) @db.Timestamptz(3)
+  clinic        Clinic           @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  doctor        DoctorProfile    @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  appointment   Appointment?     @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  hold          AppointmentHold? @relation(fields: [holdId], references: [id], onDelete: Cascade)
+
+  @@index([clinicId, doctorId, startsAt])
+}
+
+model DoctorAvailability {
+  id          String        @id @default(uuid()) @db.Uuid
+  doctorId    String        @db.Uuid
+  weekday     Int
+  startsAt    String
+  endsAt      String
+  isAvailable Boolean       @default(true)
+  doctor      DoctorProfile @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+
+  @@unique([doctorId, weekday, startsAt])
+  @@index([doctorId, weekday, isAvailable])
+}
+
+model AvailabilityException {
+  id          String        @id @default(uuid()) @db.Uuid
+  doctorId    String        @db.Uuid
+  startsAt    DateTime      @db.Timestamptz(3)
+  endsAt      DateTime      @db.Timestamptz(3)
+  reason      String?
+  isAvailable Boolean       @default(false)
+  doctor      DoctorProfile @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+
+  @@index([doctorId, startsAt, endsAt])
+}
+
+model Consultation {
+  id            String        @id @default(uuid()) @db.Uuid
+  clinicId      String        @db.Uuid
+  appointmentId String        @unique @db.Uuid
+  patientId     String        @db.Uuid
+  doctorId      String        @db.Uuid
+  note          String
+  outcome       VisitOutcome?
+  completedAt   DateTime?     @db.Timestamptz(3)
+  createdAt     DateTime      @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime      @updatedAt @db.Timestamptz(3)
+  clinic        Clinic        @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  appointment   Appointment   @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  patient       Patient       @relation(fields: [patientId], references: [id], onDelete: Restrict)
+  doctor        DoctorProfile @relation(fields: [doctorId], references: [id], onDelete: Restrict)
+  followUp      FollowUp?
+
+  @@index([clinicId, patientId, createdAt])
+  @@index([clinicId, doctorId, createdAt])
+}
+
+model FollowUp {
+  id                  String         @id @default(uuid()) @db.Uuid
+  clinicId            String         @db.Uuid
+  consultationId      String?        @unique @db.Uuid
+  patientId           String         @db.Uuid
+  departmentId        String         @db.Uuid
+  responsibleDoctorId String         @db.Uuid
+  dueAt               DateTime       @db.Timestamptz(3)
+  type                FollowUpType
+  reasonInternal      String
+  status              FollowUpStatus @default(OPEN)
+  bookedAppointmentId String?        @unique @db.Uuid
+  invitedAt           DateTime?      @db.Timestamptz(3)
+  escalatedAt         DateTime?      @db.Timestamptz(3)
+  createdAt           DateTime       @default(now()) @db.Timestamptz(3)
+  updatedAt           DateTime       @updatedAt @db.Timestamptz(3)
+  clinic              Clinic         @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  consultation        Consultation?  @relation(fields: [consultationId], references: [id], onDelete: SetNull)
+  patient             Patient        @relation(fields: [patientId], references: [id], onDelete: Restrict)
+  department          Department     @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  responsibleDoctor   DoctorProfile  @relation(fields: [responsibleDoctorId], references: [id], onDelete: Restrict)
+  bookedAppointment   Appointment?   @relation("BookedFollowUp", fields: [bookedAppointmentId], references: [id], onDelete: SetNull)
+
+  @@index([clinicId, status, dueAt])
+  @@index([clinicId, patientId, dueAt])
+}
+
+model WhatsAppConversation {
+  id                   String            @id @default(uuid()) @db.Uuid
+  clinicId             String            @db.Uuid
+  patientId            String?           @db.Uuid
+  phone                String
+  mode                 ConversationMode  @default(BOT)
+  assignedMembershipId String?           @db.Uuid
+  lastMessageAt        DateTime?         @db.Timestamptz(3)
+  lastInboundAt         DateTime?         @db.Timestamptz(3)
+  optedOutAt            DateTime?         @db.Timestamptz(3)
+  state                ConversationState @default(IDLE)
+  version              Int               @default(0)
+  context              Json              @default("{}")
+  stateUpdatedAt       DateTime          @default(now()) @db.Timestamptz(3)
+  isSimulated          Boolean           @default(false)
+  displayName          String?
+  registrationConsentAt DateTime?        @db.Timestamptz(3)
+  messagingConsentAt   DateTime?         @db.Timestamptz(3)
+  createdAt            DateTime          @default(now()) @db.Timestamptz(3)
+  updatedAt            DateTime          @updatedAt @db.Timestamptz(3)
+  clinic               Clinic            @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  patient              Patient?          @relation(fields: [patientId], references: [id], onDelete: SetNull)
+  assignedMembership   Membership?       @relation("ConversationAssignee", fields: [assignedMembershipId], references: [id], onDelete: SetNull)
+  messages             WhatsAppMessage[]
+  consents             ConsentEvent[]
+
+  @@unique([clinicId, phone])
+  @@index([clinicId, mode, lastMessageAt])
+}
+
+model ConsentEvent {
+  id             String                @id @default(uuid()) @db.Uuid
+  clinicId       String                @db.Uuid
+  patientId      String?               @db.Uuid
+  conversationId String                @db.Uuid
+  type           ConsentType
+  granted        Boolean
+  source         String                @default("WHATSAPP")
+  createdAt      DateTime              @default(now()) @db.Timestamptz(3)
+  clinic         Clinic                @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  patient        Patient?              @relation(fields: [patientId], references: [id], onDelete: SetNull)
+  conversation   WhatsAppConversation  @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([clinicId, conversationId, createdAt])
+  @@index([clinicId, patientId, type, createdAt])
+}
+
+model WhatsAppMessage {
+  id             String               @id @default(uuid()) @db.Uuid
+  conversationId String               @db.Uuid
+  direction      MessageDirection
+  body           String
+  status         MessageStatus
+  externalId     String?              @unique
+  errorCode      String?
+  seq            BigInt               @default(autoincrement())
+  sender         MessageSender        @default(BOT)
+  kind           String               @default("REPLY")
+  idempotencyKey String?              @unique
+  interactive    Json?
+  isSimulated    Boolean              @default(false)
+  attempts       Int                  @default(0)
+  nextAttemptAt  DateTime?            @db.Timestamptz(3)
+  lockedAt       DateTime?            @db.Timestamptz(3)
+  sentAt         DateTime?            @db.Timestamptz(3)
+  lastError      String?
+  createdAt      DateTime             @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime             @updatedAt @db.Timestamptz(3)
+  conversation   WhatsAppConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, createdAt])
+  @@index([conversationId, seq])
+  @@index([status, nextAttemptAt])
+  @@index([status, createdAt])
+}
+
+model ScheduledJob {
+  id             String             @id @default(uuid()) @db.Uuid
+  clinicId       String             @db.Uuid
+  type           String
+  idempotencyKey String             @unique
+  payload        Json
+  runAt          DateTime           @db.Timestamptz(3)
+  status         ScheduledJobStatus @default(PENDING)
+  attempts       Int                @default(0)
+  lastError      String?
+  lockedAt       DateTime?          @db.Timestamptz(3)
+  completedAt    DateTime?          @db.Timestamptz(3)
+  createdAt      DateTime           @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime           @updatedAt @db.Timestamptz(3)
+  clinic         Clinic             @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+
+  @@index([status, runAt])
+  @@index([clinicId, status, runAt])
+}
+
+model AuditLog {
+  id        String   @id @default(uuid()) @db.Uuid
+  clinicId  String   @db.Uuid
+  userId    String?  @db.Uuid
+  action    String
+  entity    String
+  entityId  String
+  metadata  Json?
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  clinic    Clinic   @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([clinicId, createdAt])
+  @@index([clinicId, entity, entityId])
+}
+
+model WebhookEvent {
+  id               String    @id @default(uuid()) @db.Uuid
+  clinicId         String    @db.Uuid
+  externalEventKey String    @unique
+  eventType        String
+  status           WebhookEventStatus @default(RECEIVED)
+  conversationId   String?   @db.Uuid
+  payload          Json?
+  attempts         Int       @default(0)
+  nextAttemptAt    DateTime? @db.Timestamptz(3)
+  lastError        String?
+  processedAt      DateTime? @db.Timestamptz(3)
+  createdAt        DateTime  @default(now()) @db.Timestamptz(3)
+  clinic           Clinic    @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+
+  @@index([clinicId, createdAt])
+  @@index([conversationId, status, createdAt])
+  @@index([status, nextAttemptAt])
+}
