@@ -20,6 +20,34 @@ export async function GET(request: Request) {
   try {
     const context = await requireClinicUser();
     const searchParams = new URL(request.url).searchParams;
+    // Newest bookings for any visit date, so WhatsApp bookings for later days are not hidden behind the day view.
+    if (searchParams.get("recent") === "1") {
+      const appointments = await withClinic(context, (tx) =>
+        tx.appointment.findMany({
+          where: {
+            clinicId: context.clinicId,
+            createdAt: { gte: new Date(Date.now() - 3 * 86_400_000) },
+            ...(context.doctorProfileId ? { doctorId: context.doctorProfileId } : {}),
+          },
+          select: {
+            id: true,
+            reference: true,
+            startsAt: true,
+            endsAt: true,
+            status: true,
+            visitType: true,
+            source: true,
+            createdAt: true,
+            patient: { select: { id: true, fullName: true } },
+            doctor: { select: { membership: { select: { user: { select: { displayName: true } } } } } },
+            department: { select: { name: true } },
+          },
+          orderBy: { createdAt: "desc" },
+          take: 20,
+        }),
+      );
+      return Response.json({ appointments });
+    }
     const date = searchParams.get("date");
     const to = searchParams.get("to");
     if ((date && !/^\d{4}-\d{2}-\d{2}$/.test(date)) || (to && !/^\d{4}-\d{2}-\d{2}$/.test(to))) {

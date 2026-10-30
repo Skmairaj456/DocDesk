@@ -4,6 +4,7 @@ import type { AppointmentStatus as AppointmentStatusType, ClinicRole as ClinicRo
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { localDateTimeAsUtc } from "@/lib/booking-time.mjs";
 import InboxPanel from "@/components/inbox-panel";
+import RecentBookings, { bookingDay } from "@/components/recent-bookings";
 
 const AppointmentStatus = {
   BOOKED: "BOOKED",
@@ -273,6 +274,17 @@ export default function LiveClinicWorkspace(initialData: LiveWorkspaceData) {
           <article className="metric-green"><span>Completed</span><strong>{counts.completed}</strong><small>Visits done</small></article>
           <article className="metric-slate"><span>Cancelled</span><strong>{counts.cancelled}</strong><small>Slots released</small></article>
         </div>
+        <RecentBookings
+          timezone={initialData.timezone}
+          showDoctor
+          onOpen={(booking) => {
+            setView("appointments");
+            setStatusFilter("all");
+            setDoctorFilter("all");
+            setApptSearch(booking.reference);
+            refreshAppointments(bookingDay(booking.startsAt, initialData.timezone)).catch((caught: unknown) => setError(caught instanceof Error ? caught.message : "Unable to load the schedule."));
+          }}
+        />
         <div className="live-tabs" role="tablist" aria-label="Clinic sections"><button role="tab" aria-selected={view === "appointments"} className={view === "appointments" ? "selected" : ""} onClick={() => setView("appointments")}>Appointments <span>{appointments.length}</span></button><button role="tab" aria-selected={view === "patients"} className={view === "patients" ? "selected" : ""} onClick={() => setView("patients")}>Patients <span>{patients.length}</span></button><button role="tab" aria-selected={view === "whatsapp"} className={view === "whatsapp" ? "selected" : ""} onClick={() => setView("whatsapp")}>WhatsApp</button></div>
         {view === "appointments" && <section className="live-panel"><div className="live-panel-heading"><div><h2>{selectedDate === initialData.localDate ? "Today’s appointments" : "Appointments"}</h2><p>{formatAppointmentDate(`${selectedDate}T12:00:00`, initialData.timezone)} · {appointments.length} visits</p></div><div className="reception-day-nav"><button type="button" aria-label="Previous day" onClick={() => shiftDay(-1)}>‹</button><button type="button" disabled={selectedDate === initialData.localDate} onClick={() => refreshAppointments(initialData.localDate).catch((caught: unknown) => setError(caught instanceof Error ? caught.message : "Unable to load the schedule."))}>Today</button><button type="button" aria-label="Next day" onClick={() => shiftDay(1)}>›</button><label className="live-search"><input type="date" aria-label="Schedule date" value={selectedDate} onChange={(event) => event.target.value && refreshAppointments(event.target.value).catch((caught: unknown) => setError(caught instanceof Error ? caught.message : "Unable to load the schedule."))} /></label></div></div>
           <div className="reception-filters"><div className="reception-chips" role="group" aria-label="Filter by status">{([["all", "All"], [AppointmentStatus.BOOKED, "Booked"], [AppointmentStatus.ARRIVED, "Waiting"], [AppointmentStatus.IN_CONSULTATION, "In consultation"], [AppointmentStatus.COMPLETED, "Completed"], [AppointmentStatus.CANCELLED, "Cancelled"]] as const).map(([value, label]) => <button key={value} type="button" className={statusFilter === value ? "selected" : ""} onClick={() => setStatusFilter(value)}>{label}</button>)}</div><select aria-label="Filter by doctor" value={doctorFilter} onChange={(event) => setDoctorFilter(event.target.value)}><option value="all">All doctors</option>{initialData.doctors.map((doctor) => <option key={doctor.id} value={doctor.name}>{doctor.name}</option>)}</select><input className="live-search-input" placeholder="Search patient or reference" value={apptSearch} onChange={(event) => setApptSearch(event.target.value)} /></div>

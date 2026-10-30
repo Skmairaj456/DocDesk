@@ -4,6 +4,7 @@ import type { VisitOutcome } from "@prisma/client";
 import Link from "next/link";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import type { LiveWorkspaceData } from "@/components/live-clinic-workspace";
+import RecentBookings, { bookingDay } from "@/components/recent-bookings";
 import { localDateTimeAsUtc } from "@/lib/booking-time.mjs";
 
 type Appointment = LiveWorkspaceData["appointments"][number];
@@ -500,6 +501,16 @@ export default function DoctorWorkspace(initialData: LiveWorkspaceData) {
           <article className="metric-green"><span>Completed</span><strong>{completedCount}</strong><small>Visits documented</small></article>
           <article className="metric-teal"><span>Next 7 days</span><strong>{weekAheadCount}</strong><small>Upcoming bookings</small></article>
         </section>
+
+        <RecentBookings
+          timezone={initialData.timezone}
+          showDoctor={false}
+          onOpen={(booking) => {
+            setQueueFilter("all");
+            setView("queue");
+            selectDay(bookingDay(booking.startsAt, initialData.timezone));
+          }}
+        />
 
         {error && <p className="live-error" role="alert">{error}</p>}
         {message && <p className="live-message" role="status">{message}</p>}

@@ -236,3 +236,31 @@
   .live-title { padding: 20px; }
   .live-title h1 { font-size: 26px; }
 }
+
+/* New bookings feed: recent bookings for any visit date, shown on reception and doctor screens. */
+.recent-bookings { background: white; border-radius: 18px; box-shadow: 0 4px 22px #2a4a8712; margin: 18px 0; overflow: hidden; }
+.recent-bookings-heading { align-items: center; display: flex; gap: 12px; justify-content: space-between; padding: 18px 22px 12px; }
+.recent-bookings-heading h2 { align-items: center; color: #2f3b4e; display: flex; font-size: 18px; gap: 10px; letter-spacing: -.2px; margin: 0; }
+.recent-bookings-heading p { color: #8993a2; font-size: 13px; margin: 4px 0 0; }
+.recent-bookings-badge { animation: recent-pulse 1.6s ease-in-out 3; background: #e5484d; border-radius: 999px; color: white; font-size: 12px; font-weight: 650; padding: 3px 10px; }
+.recent-bookings ul { list-style: none; margin: 0; padding: 0 12px 10px; }
+.recent-booking { align-items: center; background: none; border: 0; border-radius: 12px; cursor: pointer; display: grid; font: inherit; gap: 14px; grid-template-columns: 92px minmax(0, 1fr) auto; padding: 11px 10px; text-align: left; transition: background .15s; width: 100%; }
+.recent-booking:hover { background: #f4f7fd; }
+.recent-booking.is-new { background: #fff8e6; box-shadow: inset 4px 0 0 #f0a020; }
+.recent-booking.is-cancelled { opacity: .55; }
+.recent-booking-source { border-radius: 999px; font-size: 12px; font-weight: 650; padding: 5px 0; text-align: center; }
+.recent-booking-source.whatsapp { background: #dcf7e6; color: #137a43; }
+.recent-booking-source.reception { background: #e8f1ff; color: #2a5db8; }
+.recent-booking-source.doctor { background: #efe7fd; color: #6a43b8; }
+.recent-booking-person, .recent-booking-when { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.recent-booking-person strong, .recent-booking-when strong { color: #2f3b4e; font-size: 14px; font-weight: 650; }
+.recent-booking-person small, .recent-booking-when small { color: #8993a2; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.recent-booking-when { text-align: right; }
+.recent-bookings-empty { color: #8993a2; font-size: 14px; margin: 0; padding: 6px 22px 20px; }
+.recent-bookings-more { background: none; border: 0; border-top: 1px solid #edf0f4; color: #315fb5; cursor: pointer; font: inherit; font-size: 13px; font-weight: 600; padding: 12px; width: 100%; }
+@keyframes recent-pulse { 50% { transform: scale(1.12); } }
+@media (max-width: 640px) {
+  .recent-bookings-heading { padding-inline: 16px; }
+  .recent-booking { gap: 6px 10px; grid-template-columns: minmax(0, 1fr) auto; }
+  .recent-booking-source { grid-column: 1 / -1; justify-self: start; padding-inline: 10px; }
+}
