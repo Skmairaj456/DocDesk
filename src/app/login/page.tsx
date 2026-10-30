@@ -14,7 +14,7 @@ export default function LoginPage() {
         <Suspense fallback={<p>Loading sign-in…</p>}>
           <SignInForm
             demoCredentials={process.env.NODE_ENV === "production" ? null : {
-              doctor: "doctor@docdesk.demo",
+              doctor: "saheesta@docdesk.demo",
               receptionist: "reception@docdesk.demo",
               password: "DocDeskDemo!2026",
             }}

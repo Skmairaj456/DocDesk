@@ -5,28 +5,24 @@ const prisma = new PrismaClient();
 const id = {
   clinic: "00000000-0000-4000-8000-000000000001",
   departments: {
-    cardiology: "00000000-0000-4000-8000-000000000011",
-    dermatology: "00000000-0000-4000-8000-000000000012",
-    general: "00000000-0000-4000-8000-000000000013",
+    gynecology: "00000000-0000-4000-8000-000000000014",
+    orthopedics: "00000000-0000-4000-8000-000000000015",
   },
   users: {
     admin: "00000000-0000-4000-8000-000000000021",
     reception: "00000000-0000-4000-8000-000000000022",
-    aditi: "00000000-0000-4000-8000-000000000023",
-    neel: "00000000-0000-4000-8000-000000000024",
-    sana: "00000000-0000-4000-8000-000000000025",
+    saheesta: "00000000-0000-4000-8000-000000000026",
+    rajeev: "00000000-0000-4000-8000-000000000027",
   },
   memberships: {
     admin: "00000000-0000-4000-8000-000000000031",
     reception: "00000000-0000-4000-8000-000000000032",
-    aditi: "00000000-0000-4000-8000-000000000033",
-    neel: "00000000-0000-4000-8000-000000000034",
-    sana: "00000000-0000-4000-8000-000000000035",
+    saheesta: "00000000-0000-4000-8000-000000000036",
+    rajeev: "00000000-0000-4000-8000-000000000037",
   },
   doctors: {
-    aditi: "00000000-0000-4000-8000-000000000041",
-    neel: "00000000-0000-4000-8000-000000000042",
-    sana: "00000000-0000-4000-8000-000000000043",
+    saheesta: "00000000-0000-4000-8000-000000000044",
+    rajeev: "00000000-0000-4000-8000-000000000045",
   },
   patients: [
     "00000000-0000-4000-8000-000000000051",
@@ -57,15 +53,13 @@ const clinic = {
 const users = [
   { key: "admin", email: "admin@example.test", displayName: "Clinic Admin", role: ClinicRole.ADMIN },
   { key: "reception", email: "reception@docdesk.demo", displayName: "Maya Reddy", role: ClinicRole.RECEPTIONIST },
-  { key: "aditi", email: "doctor@docdesk.demo", displayName: "Dr. Aditi Rao", role: ClinicRole.DOCTOR },
-  { key: "neel", email: "neel@docdesk.demo", displayName: "Dr. Neel Shah", role: ClinicRole.DOCTOR },
-  { key: "sana", email: "sana@docdesk.demo", displayName: "Dr. Sana Ali", role: ClinicRole.DOCTOR },
+  { key: "saheesta", email: "saheesta@docdesk.demo", displayName: "Dr. Saheesta Mohammad", role: ClinicRole.DOCTOR },
+  { key: "rajeev", email: "rajeev@docdesk.demo", displayName: "Dr. Rajeev", role: ClinicRole.DOCTOR },
 ];
 
 const departments = [
-  { key: "cardiology", name: "Cardiology", code: "CARD" },
-  { key: "dermatology", name: "Dermatology", code: "DERM" },
-  { key: "general", name: "General medicine", code: "GEN" },
+  { key: "gynecology", name: "Gynecology", code: "GYN" },
+  { key: "orthopedics", name: "Orthopedics", code: "ORTH" },
 ];
 
 const patientData = [
@@ -119,7 +113,7 @@ async function seed(db) {
     });
   }
 
-  for (const [key, minutes] of [["aditi", 30], ["neel", 30], ["sana", 30]]) {
+  for (const [key, minutes] of [["saheesta", 30], ["rajeev", 30]]) {
     await db.doctorProfile.upsert({
       where: { membershipId: id.memberships[key] },
       update: { consultationMinutes: minutes },
@@ -134,9 +128,8 @@ async function seed(db) {
 
   await db.doctorDepartment.createMany({
     data: [
-      { doctorId: id.doctors.aditi, departmentId: id.departments.cardiology },
-      { doctorId: id.doctors.neel, departmentId: id.departments.dermatology },
-      { doctorId: id.doctors.sana, departmentId: id.departments.general },
+      { doctorId: id.doctors.saheesta, departmentId: id.departments.gynecology },
+      { doctorId: id.doctors.rajeev, departmentId: id.departments.orthopedics },
     ],
     skipDuplicates: true,
   });
@@ -171,12 +164,12 @@ async function seed(db) {
   }
 
   const appointments = [
-    { patient: 0, doctor: "aditi", department: "cardiology", hour: 9, status: AppointmentStatus.ARRIVED, visitType: VisitType.FOLLOW_UP },
-    { patient: 1, doctor: "aditi", department: "cardiology", hour: 9, minute: 30, status: AppointmentStatus.COMPLETED, visitType: VisitType.CONSULTATION },
-    { patient: 2, doctor: "aditi", department: "cardiology", hour: 10, status: AppointmentStatus.BOOKED, visitType: VisitType.CONSULTATION },
-    { patient: 3, doctor: "neel", department: "dermatology", hour: 10, minute: 30, status: AppointmentStatus.BOOKED, visitType: VisitType.CONSULTATION },
-    { patient: 4, doctor: "neel", department: "dermatology", hour: 11, status: AppointmentStatus.BOOKED, visitType: VisitType.FOLLOW_UP },
-    { patient: 5, doctor: "sana", department: "general", hour: 11, minute: 30, status: AppointmentStatus.BOOKED, visitType: VisitType.CONSULTATION },
+    { patient: 0, doctor: "saheesta", department: "gynecology", hour: 9, status: AppointmentStatus.ARRIVED, visitType: VisitType.FOLLOW_UP },
+    { patient: 1, doctor: "saheesta", department: "gynecology", hour: 9, minute: 30, status: AppointmentStatus.COMPLETED, visitType: VisitType.CONSULTATION },
+    { patient: 2, doctor: "saheesta", department: "gynecology", hour: 10, status: AppointmentStatus.BOOKED, visitType: VisitType.CONSULTATION },
+    { patient: 3, doctor: "rajeev", department: "orthopedics", hour: 10, minute: 30, status: AppointmentStatus.BOOKED, visitType: VisitType.CONSULTATION },
+    { patient: 4, doctor: "rajeev", department: "orthopedics", hour: 11, status: AppointmentStatus.BOOKED, visitType: VisitType.FOLLOW_UP },
+    { patient: 5, doctor: "rajeev", department: "orthopedics", hour: 11, minute: 30, status: AppointmentStatus.BOOKED, visitType: VisitType.CONSULTATION },
   ];
 
   for (const [index, item] of appointments.entries()) {

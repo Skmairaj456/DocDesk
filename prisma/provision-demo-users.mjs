@@ -12,21 +12,15 @@ const accounts = [
     role: "RECEPTIONIST",
   },
   {
-    userId: "00000000-0000-4000-8000-000000000023",
-    email: "doctor@docdesk.demo",
-    displayName: "Dr. Aditi Rao",
+    userId: "00000000-0000-4000-8000-000000000026",
+    email: "saheesta@docdesk.demo",
+    displayName: "Dr. Saheesta Mohammad",
     role: "DOCTOR",
   },
   {
-    userId: "00000000-0000-4000-8000-000000000024",
-    email: "neel@docdesk.demo",
-    displayName: "Dr. Neel Shah",
-    role: "DOCTOR",
-  },
-  {
-    userId: "00000000-0000-4000-8000-000000000025",
-    email: "sana@docdesk.demo",
-    displayName: "Dr. Sana Ali",
+    userId: "00000000-0000-4000-8000-000000000027",
+    email: "rajeev@docdesk.demo",
+    displayName: "Dr. Rajeev",
     role: "DOCTOR",
   },
 ];
