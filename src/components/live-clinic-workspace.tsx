@@ -1,7 +1,7 @@
 "use client";
 
 import type { AppointmentStatus as AppointmentStatusType, ClinicRole as ClinicRoleType } from "@prisma/client";
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { localDateTimeAsUtc } from "@/lib/booking-time.mjs";
 import InboxPanel from "@/components/inbox-panel";
 
@@ -153,6 +153,14 @@ export default function LiveClinicWorkspace(initialData: LiveWorkspaceData) {
     setAppointments(result.appointments);
     setSelectedDate(date);
   }
+
+  // WhatsApp bookings arrive without any action on this screen, so keep the visible day current.
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === "visible") refreshAppointments(selectedDate).catch(() => undefined);
+    }, 10_000);
+    return () => window.clearInterval(timer);
+  }, [selectedDate]);
 
   function shiftDay(days: number) {
     const next = new Date(`${selectedDate}T00:00:00Z`);

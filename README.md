@@ -80,7 +80,9 @@ The login page displays these credentials in development only:
 | Role | Email | Password |
 | --- | --- | --- |
 | Receptionist | `reception@docdesk.demo` | `DocDeskDemo!2026` |
-| Doctor | `doctor@docdesk.demo` | `DocDeskDemo!2026` |
+| Doctor (Dr. Aditi Rao, Cardiology) | `doctor@docdesk.demo` | `DocDeskDemo!2026` |
+| Doctor (Dr. Neel Shah, Dermatology) | `neel@docdesk.demo` | `DocDeskDemo!2026` |
+| Doctor (Dr. Sana Ali, General) | `sana@docdesk.demo` | `DocDeskDemo!2026` |
 
 The provisioner creates confirmed Supabase Auth users and links them to the seeded clinic roles. It refuses to overwrite an existing Auth account unless that account was previously created as a DocDesk demo user, and it refuses to run when `NODE_ENV=production`. Never use the service-role key or demo accounts with production data; keep the service-role key server-side and out of source control. The regular email magic-link option remains available.
 

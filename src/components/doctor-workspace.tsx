@@ -227,6 +227,15 @@ export default function DoctorWorkspace(initialData: LiveWorkspaceData) {
     setScheduleDate(date);
   }
 
+  // WhatsApp bookings arrive without any action on this screen, so keep the queue current.
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === "visible") refreshAppointments(scheduleDate).catch(() => undefined);
+    }, 10_000);
+    return () => window.clearInterval(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scheduleDate]);
+
   function selectDay(date: string) {
     if (date >= initialData.localDate && date <= addDays(initialData.localDate, UPCOMING_DAYS - 1)) {
       setAppointments(upcoming.filter((appointment) => dayOf(appointment.startsAt, initialData.timezone) === date));

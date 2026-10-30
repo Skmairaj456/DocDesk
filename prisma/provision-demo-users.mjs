@@ -17,6 +17,18 @@ const accounts = [
     displayName: "Dr. Aditi Rao",
     role: "DOCTOR",
   },
+  {
+    userId: "00000000-0000-4000-8000-000000000024",
+    email: "neel@docdesk.demo",
+    displayName: "Dr. Neel Shah",
+    role: "DOCTOR",
+  },
+  {
+    userId: "00000000-0000-4000-8000-000000000025",
+    email: "sana@docdesk.demo",
+    displayName: "Dr. Sana Ali",
+    role: "DOCTOR",
+  },
 ];
 
 if (process.env.NODE_ENV === "production") {
@@ -115,6 +127,7 @@ try {
   });
 
   console.log("Provisioned the development-only DocDesk doctor and receptionist accounts.");
+  for (const account of accounts) console.log(`  ${account.role.padEnd(12)} ${account.email}`);
 } catch (error) {
   console.error("Demo account provisioning failed:", error instanceof Error ? error.message : "Unexpected error.");
   process.exitCode = 1;

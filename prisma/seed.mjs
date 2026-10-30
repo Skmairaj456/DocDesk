@@ -58,8 +58,8 @@ const users = [
   { key: "admin", email: "admin@example.test", displayName: "Clinic Admin", role: ClinicRole.ADMIN },
   { key: "reception", email: "reception@docdesk.demo", displayName: "Maya Reddy", role: ClinicRole.RECEPTIONIST },
   { key: "aditi", email: "doctor@docdesk.demo", displayName: "Dr. Aditi Rao", role: ClinicRole.DOCTOR },
-  { key: "neel", email: "neel@example.test", displayName: "Dr. Neel Shah", role: ClinicRole.DOCTOR },
-  { key: "sana", email: "sana@example.test", displayName: "Dr. Sana Ali", role: ClinicRole.DOCTOR },
+  { key: "neel", email: "neel@docdesk.demo", displayName: "Dr. Neel Shah", role: ClinicRole.DOCTOR },
+  { key: "sana", email: "sana@docdesk.demo", displayName: "Dr. Sana Ali", role: ClinicRole.DOCTOR },
 ];
 
 const departments = [
