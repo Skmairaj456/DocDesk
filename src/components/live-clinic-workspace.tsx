@@ -5,6 +5,8 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { localDateTimeAsUtc } from "@/lib/booking-time.mjs";
 import InboxPanel from "@/components/inbox-panel";
 import RecentBookings, { bookingDay } from "@/components/recent-bookings";
+import AppointmentList from "@/components/appointment-list";
+import PatientProfile, { type PatientProfileData } from "@/components/patient-profile";
 
 const AppointmentStatus = {
   BOOKED: "BOOKED",
@@ -66,7 +68,9 @@ export default function LiveClinicWorkspace(initialData: LiveWorkspaceData) {
   const [appointments, setAppointments] = useState(initialData.appointments);
   const [patients, setPatients] = useState(initialData.patients);
   const [search, setSearch] = useState("");
-  const [view, setView] = useState<"appointments" | "patients" | "whatsapp">("appointments");
+  const [view, setView] = useState<"appointments" | "all" | "patients" | "whatsapp">("appointments");
+  const [profilePatientId, setProfilePatientId] = useState<string | null>(null);
+  const [patientResults, setPatientResults] = useState<Patient[] | null>(null);
   const [selectedDate, setSelectedDate] = useState(initialData.localDate);
   const [statusFilter, setStatusFilter] = useState<"all" | AppointmentStatusType>("all");
   const [doctorFilter, setDoctorFilter] = useState("all");
@@ -87,9 +91,26 @@ export default function LiveClinicWorkspace(initialData: LiveWorkspaceData) {
   const [visitType, setVisitType] = useState("CONSULTATION");
 
   const visiblePatients = useMemo(() => {
+    if (patientResults) return patientResults;
     const term = search.toLocaleLowerCase().trim();
     return patients.filter((patient) => `${patient.fullName} ${patient.phone}`.toLocaleLowerCase().includes(term));
-  }, [patients, search]);
+  }, [patients, patientResults, search]);
+
+  // The directory starts with the first 100 patients; searches go to the server so every patient can be found.
+  useEffect(() => {
+    const term = search.trim();
+    const timer = window.setTimeout(() => {
+      if (term.length < 2) {
+        setPatientResults(null);
+        return;
+      }
+      fetch(`/api/patients?q=${encodeURIComponent(term)}`)
+        .then((response) => response.ok ? response.json() : null)
+        .then((result: { patients: Patient[] } | null) => result && setPatientResults(result.patients))
+        .catch(() => undefined);
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [search]);
   const counts = useMemo(() => {
     const live = appointments.filter((entry) => entry.status !== AppointmentStatus.CANCELLED);
     return {
@@ -167,6 +188,25 @@ export default function LiveClinicWorkspace(initialData: LiveWorkspaceData) {
     const next = new Date(`${selectedDate}T00:00:00Z`);
     next.setUTCDate(next.getUTCDate() + days);
     refreshAppointments(next.toISOString().slice(0, 10)).catch((caught: unknown) => setError(caught instanceof Error ? caught.message : "Unable to load the schedule."));
+  }
+
+  function bookForPatient(patient: PatientProfileData) {
+    const summary = { id: patient.id, fullName: patient.fullName, phone: patient.phone, dateOfBirth: patient.dateOfBirth };
+    setPatients((current) => current.some((entry) => entry.id === patient.id) ? current : [summary, ...current]);
+    setSelectedPatient(patient.id);
+    setProfilePatientId(null);
+    setShowPatientForm(false);
+    setShowBookingForm(true);
+    setError("");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function patientUpdated(patient: PatientProfileData) {
+    const summary = { id: patient.id, fullName: patient.fullName, phone: patient.phone, dateOfBirth: patient.dateOfBirth };
+    setPatients((current) => current.map((entry) => entry.id === patient.id ? summary : entry));
+    setPatientResults((current) => current?.map((entry) => entry.id === patient.id ? summary : entry) ?? null);
+    refreshAppointments(selectedDate).catch(() => undefined);
+    showMessage(`Patient details updated · ${patient.fullName}`);
   }
 
   async function cancelAppointment(appointment: Appointment) {
@@ -285,14 +325,16 @@ export default function LiveClinicWorkspace(initialData: LiveWorkspaceData) {
             refreshAppointments(bookingDay(booking.startsAt, initialData.timezone)).catch((caught: unknown) => setError(caught instanceof Error ? caught.message : "Unable to load the schedule."));
           }}
         />
-        <div className="live-tabs" role="tablist" aria-label="Clinic sections"><button role="tab" aria-selected={view === "appointments"} className={view === "appointments" ? "selected" : ""} onClick={() => setView("appointments")}>Appointments <span>{appointments.length}</span></button><button role="tab" aria-selected={view === "patients"} className={view === "patients" ? "selected" : ""} onClick={() => setView("patients")}>Patients <span>{patients.length}</span></button><button role="tab" aria-selected={view === "whatsapp"} className={view === "whatsapp" ? "selected" : ""} onClick={() => setView("whatsapp")}>WhatsApp</button></div>
+        <div className="live-tabs" role="tablist" aria-label="Clinic sections"><button role="tab" aria-selected={view === "appointments"} className={view === "appointments" ? "selected" : ""} onClick={() => setView("appointments")}>Day schedule <span>{appointments.length}</span></button><button role="tab" aria-selected={view === "all"} className={view === "all" ? "selected" : ""} onClick={() => setView("all")}>All appointments</button><button role="tab" aria-selected={view === "patients"} className={view === "patients" ? "selected" : ""} onClick={() => setView("patients")}>Patients <span>{patients.length}</span></button><button role="tab" aria-selected={view === "whatsapp"} className={view === "whatsapp" ? "selected" : ""} onClick={() => setView("whatsapp")}>WhatsApp</button></div>
         {view === "appointments" && <section className="live-panel"><div className="live-panel-heading"><div><h2>{selectedDate === initialData.localDate ? "Today’s appointments" : "Appointments"}</h2><p>{formatAppointmentDate(`${selectedDate}T12:00:00`, initialData.timezone)} · {appointments.length} visits</p></div><div className="reception-day-nav"><button type="button" aria-label="Previous day" onClick={() => shiftDay(-1)}>‹</button><button type="button" disabled={selectedDate === initialData.localDate} onClick={() => refreshAppointments(initialData.localDate).catch((caught: unknown) => setError(caught instanceof Error ? caught.message : "Unable to load the schedule."))}>Today</button><button type="button" aria-label="Next day" onClick={() => shiftDay(1)}>›</button><label className="live-search"><input type="date" aria-label="Schedule date" value={selectedDate} onChange={(event) => event.target.value && refreshAppointments(event.target.value).catch((caught: unknown) => setError(caught instanceof Error ? caught.message : "Unable to load the schedule."))} /></label></div></div>
           <div className="reception-filters"><div className="reception-chips" role="group" aria-label="Filter by status">{([["all", "All"], [AppointmentStatus.BOOKED, "Booked"], [AppointmentStatus.ARRIVED, "Waiting"], [AppointmentStatus.IN_CONSULTATION, "In consultation"], [AppointmentStatus.COMPLETED, "Completed"], [AppointmentStatus.CANCELLED, "Cancelled"]] as const).map(([value, label]) => <button key={value} type="button" className={statusFilter === value ? "selected" : ""} onClick={() => setStatusFilter(value)}>{label}</button>)}</div><select aria-label="Filter by doctor" value={doctorFilter} onChange={(event) => setDoctorFilter(event.target.value)}><option value="all">All doctors</option>{initialData.doctors.map((doctor) => <option key={doctor.id} value={doctor.name}>{doctor.name}</option>)}</select><input className="live-search-input" placeholder="Search patient or reference" value={apptSearch} onChange={(event) => setApptSearch(event.target.value)} /></div>
-          {visibleAppointments.length === 0 ? <p className="live-empty">{appointments.length === 0 ? "No appointments for this day." : "No appointments match these filters."}</p> : <div className="live-table-wrap"><table className="live-table"><thead><tr><th>Time</th><th>Patient</th><th>Doctor</th><th>Department</th><th>Visit</th><th>Status</th><th /></tr></thead><tbody>{visibleAppointments.map((appointment) => { const action = nextAction(appointment); const cancellable = initialData.role !== ClinicRole.DOCTOR && (appointment.status === AppointmentStatus.BOOKED || appointment.status === AppointmentStatus.ARRIVED); return <tr key={appointment.id}><td>{formatAppointmentTime(appointment.startsAt, initialData.timezone)}</td><td><strong>{appointment.patient.fullName}</strong><small>{appointment.reference}</small></td><td>{appointment.doctor.membership.user.displayName}</td><td>{appointment.department.name}</td><td>{appointment.visitType.replaceAll("_", " ").toLowerCase()}</td><td><span className={`live-status ${appointment.status.toLowerCase().replaceAll("_", "-")}`}>{appointmentStatusLabel(appointment.status)}</span></td><td className="reception-actions">{action && <button className="button button-outline button-small" onClick={() => updateAppointment(appointment, action.status)}>{action.label}</button>}{cancellable && <button className="button button-quiet button-small reception-cancel" onClick={() => cancelAppointment(appointment)}>Cancel</button>}</td></tr>; })}</tbody></table></div>}
+          {visibleAppointments.length === 0 ? <p className="live-empty">{appointments.length === 0 ? "No appointments for this day." : "No appointments match these filters."}</p> : <div className="live-table-wrap"><table className="live-table"><thead><tr><th>Time</th><th>Patient</th><th>Doctor</th><th>Department</th><th>Visit</th><th>Status</th><th /></tr></thead><tbody>{visibleAppointments.map((appointment) => { const action = nextAction(appointment); const cancellable = initialData.role !== ClinicRole.DOCTOR && (appointment.status === AppointmentStatus.BOOKED || appointment.status === AppointmentStatus.ARRIVED); return <tr key={appointment.id}><td>{formatAppointmentTime(appointment.startsAt, initialData.timezone)}</td><td><button type="button" className="patient-link" onClick={() => setProfilePatientId(appointment.patient.id)}>{appointment.patient.fullName}</button><small>{appointment.reference}</small></td><td>{appointment.doctor.membership.user.displayName}</td><td>{appointment.department.name}</td><td>{appointment.visitType.replaceAll("_", " ").toLowerCase()}</td><td><span className={`live-status ${appointment.status.toLowerCase().replaceAll("_", "-")}`}>{appointmentStatusLabel(appointment.status)}</span></td><td className="reception-actions">{action && <button className="button button-outline button-small" onClick={() => updateAppointment(appointment, action.status)}>{action.label}</button>}{cancellable && <button className="button button-quiet button-small reception-cancel" onClick={() => cancelAppointment(appointment)}>Cancel</button>}</td></tr>; })}</tbody></table></div>}
         </section>}
+        {view === "all" && <AppointmentList timezone={initialData.timezone} today={initialData.localDate} doctors={initialData.doctors} onOpenPatient={setProfilePatientId} onMessage={showMessage} />}
         {view === "whatsapp" && <InboxPanel timezone={initialData.timezone} />}
-        {view === "patients" && <section className="live-panel"><div className="live-panel-heading"><div><h2>Patient directory</h2><p>Contact information only · clinical history is not included in this view.</p></div><input className="live-search-input" placeholder="Search name or phone" value={search} onChange={(event) => setSearch(event.target.value)} /></div><div className="live-table-wrap"><table className="live-table"><thead><tr><th>Patient</th><th>Phone</th><th>Date of birth</th></tr></thead><tbody>{visiblePatients.map((patient) => <tr key={patient.id}><td><strong>{patient.fullName}</strong></td><td>{patient.phone}</td><td>{patient.dateOfBirth ? new Intl.DateTimeFormat("en", { timeZone: "UTC", dateStyle: "medium" }).format(new Date(patient.dateOfBirth)) : "—"}</td></tr>)}</tbody></table>{visiblePatients.length === 0 && <p className="live-empty">No patients match this search.</p>}</div></section>}
+        {view === "patients" && <section className="live-panel"><div className="live-panel-heading"><div><h2>Patient directory</h2><p>Search all patients by name or phone · open a patient to see their visits, edit details or book</p></div><input className="live-search-input" placeholder="Search name or phone" value={search} onChange={(event) => setSearch(event.target.value)} /></div><div className="live-table-wrap"><table className="live-table"><thead><tr><th>Patient</th><th>Phone</th><th>Date of birth</th><th /></tr></thead><tbody>{visiblePatients.map((patient) => <tr key={patient.id} className="patient-row" onClick={() => setProfilePatientId(patient.id)}><td><strong>{patient.fullName}</strong></td><td>{patient.phone}</td><td>{patient.dateOfBirth ? new Intl.DateTimeFormat("en", { timeZone: "UTC", dateStyle: "medium" }).format(new Date(patient.dateOfBirth)) : "—"}</td><td className="reception-actions"><button type="button" className="button button-outline button-small">Open profile</button></td></tr>)}</tbody></table>{visiblePatients.length === 0 && <p className="live-empty">No patients match this search.</p>}</div></section>}
       </div>
+      {profilePatientId && <PatientProfile patientId={profilePatientId} timezone={initialData.timezone} onClose={() => setProfilePatientId(null)} onBook={bookForPatient} onUpdated={patientUpdated} />}
     </main>
   );
 }

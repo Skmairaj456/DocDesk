@@ -1,6 +1,6 @@
-import { AppointmentStatus, ClinicRole, FollowUpStatus, FollowUpType, Prisma, VisitType } from "@prisma/client";
+import { AppointmentSource, AppointmentStatus, ClinicRole, FollowUpStatus, FollowUpType, Prisma, VisitType } from "@prisma/client";
 import { z } from "zod";
-import { AuthenticationError, requireClinicUser } from "@/lib/auth";
+import { AuthenticationError, requireClinicUser, type ClinicContext } from "@/lib/auth";
 import { withClinic } from "@/lib/tenant-db";
 import { clinicLocalDate, localDayBounds, localScheduleTime } from "@/lib/booking-time.mjs";
 
@@ -15,6 +15,79 @@ const appointmentInput = z.object({
 });
 
 class FollowUpBookingConflict extends Error {}
+
+const listQuery = z.object({
+  range: z.enum(["upcoming", "week", "past", "custom"]).default("upcoming"),
+  from: z.string().date().optional(),
+  to: z.string().date().optional(),
+  q: z.string().trim().max(100).optional(),
+  doctorId: z.string().uuid().optional(),
+  status: z.nativeEnum(AppointmentStatus).optional(),
+  source: z.nativeEnum(AppointmentSource).optional(),
+  page: z.coerce.number().int().min(0).max(1000).default(0),
+});
+const listPageSize = 50;
+
+// Appointments across any dates, for the reception "All appointments" view.
+async function listAppointments(context: ClinicContext, searchParams: URLSearchParams) {
+  const parsed = listQuery.safeParse(Object.fromEntries([...searchParams].filter(([, value]) => value !== "")));
+  if (!parsed.success) return Response.json({ error: "Invalid appointment filters." }, { status: 400 });
+  const filters = parsed.data;
+  return withClinic(context, async (tx) => {
+    const clinic = await tx.clinic.findUnique({ where: { id: context.clinicId }, select: { timezone: true } });
+    if (!clinic) return Response.json({ error: "Clinic was not found." }, { status: 404 });
+    const today = clinicLocalDate(new Date(), clinic.timezone);
+    const todayStart = localDayBounds(today, clinic.timezone).start;
+    let startsAt: Prisma.DateTimeFilter;
+    if (filters.range === "custom") {
+      if (!filters.from || !filters.to || filters.to < filters.from) {
+        return Response.json({ error: "Choose a start and end date." }, { status: 400 });
+      }
+      startsAt = { gte: localDayBounds(filters.from, clinic.timezone).start, lt: localDayBounds(filters.to, clinic.timezone).end };
+    } else if (filters.range === "week") {
+      startsAt = { gte: todayStart, lt: new Date(todayStart.valueOf() + 7 * 86_400_000) };
+    } else if (filters.range === "past") {
+      startsAt = { lt: todayStart };
+    } else {
+      startsAt = { gte: todayStart };
+    }
+    const digits = filters.q?.replace(/\D/g, "") ?? "";
+    const rows = await tx.appointment.findMany({
+      where: {
+        clinicId: context.clinicId,
+        startsAt,
+        ...(context.doctorProfileId ? { doctorId: context.doctorProfileId } : filters.doctorId ? { doctorId: filters.doctorId } : {}),
+        ...(filters.status ? { status: filters.status } : {}),
+        ...(filters.source ? { source: filters.source } : {}),
+        ...(filters.q
+          ? {
+              OR: [
+                { reference: { contains: filters.q, mode: "insensitive" } },
+                { patient: { normalizedName: { contains: filters.q.toLocaleLowerCase(), mode: "insensitive" } } },
+                ...(digits.length >= 3 ? [{ patient: { normalizedPhone: { contains: digits } } }] : []),
+              ],
+            }
+          : {}),
+      },
+      select: {
+        id: true,
+        reference: true,
+        startsAt: true,
+        endsAt: true,
+        status: true,
+        visitType: true,
+        source: true,
+        patient: { select: { id: true, fullName: true, phone: true } },
+        doctor: { select: { membership: { select: { user: { select: { displayName: true } } } } } },
+        department: { select: { name: true } },
+      },
+      orderBy: { startsAt: filters.range === "past" ? "desc" : "asc" },
+      skip: filters.page * listPageSize,
+      take: listPageSize + 1,
+    });
+    return Response.json({ appointments: rows.slice(0, listPageSize), hasMore: rows.length > listPageSize });
+  });
+}
 
 export async function GET(request: Request) {
   try {
@@ -48,6 +121,7 @@ export async function GET(request: Request) {
       );
       return Response.json({ appointments });
     }
+    if (searchParams.get("list") === "1") return await listAppointments(context, searchParams);
     const date = searchParams.get("date");
     const to = searchParams.get("to");
     if ((date && !/^\d{4}-\d{2}-\d{2}$/.test(date)) || (to && !/^\d{4}-\d{2}-\d{2}$/.test(to))) {

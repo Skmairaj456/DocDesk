@@ -264,3 +264,24 @@
   .recent-booking { gap: 6px 10px; grid-template-columns: minmax(0, 1fr) auto; }
   .recent-booking-source { grid-column: 1 / -1; justify-self: start; padding-inline: 10px; }
 }
+
+/* Reception: all-appointments list and patient profile drawer. */
+.patient-link { background: none; border: 0; color: #2a5db8; cursor: pointer; display: block; font: inherit; font-weight: 650; padding: 0; text-align: left; }
+.patient-link:hover { text-decoration: underline; }
+.patient-row { cursor: pointer; }
+.appointment-list-dates { align-items: center; color: #8993a2; display: inline-flex; font-size: 13px; gap: 8px; }
+.appointment-list-dates input, .reception-filters select { border: 1px solid #dfe5ed; border-radius: 8px; color: #43536a; font: inherit; font-size: 13px; padding: 7px 10px; }
+.profile-actions { align-items: center; display: flex; flex-wrap: wrap; gap: 10px; }
+.profile-actions span { color: #8993a2; font-size: 13px; margin-left: auto; }
+.profile-edit .live-form-grid { margin-bottom: 12px; }
+.profile-visit { align-items: center; display: grid; gap: 12px; grid-template-columns: minmax(0, 1fr) 92px auto; }
+.profile-visit strong { color: #2f3b4e; display: block; font-size: 14px; }
+.profile-visit small { color: #8993a2; display: block; font-size: 12px; margin-top: 3px; }
+.profile-visit .recent-booking-source { padding: 5px 0; }
+.profile-empty { color: #8993a2; font-size: 13px; margin: 0; }
+.profile-note { color: #8993a2; font-size: 12px; margin: 0; text-align: center; }
+@media (max-width: 640px) {
+  .profile-visit { grid-template-columns: minmax(0, 1fr) auto; }
+  .profile-visit .recent-booking-source { display: none; }
+  .profile-actions span { margin-left: 0; width: 100%; }
+}
