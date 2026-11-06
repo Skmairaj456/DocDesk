@@ -23,7 +23,9 @@ import {
   slotsForDate,
   type Tx,
 } from "@/lib/booking-service";
+import { SESSIONS, isSessionId, sessionHours, sessionOfInstant, sessionTitle, weeklyTimings, type SessionId } from "@/lib/whatsapp/sessions";
 import { addDays, firstName, formatClinicDate, formatClinicTime, formatDobForDisplay, normalizePhone, parseDateOfBirth, parseName } from "@/lib/whatsapp/text";
+import { weekdayOf } from "@/lib/slots";
 
 export type Option = { id: string; title: string; description?: string };
 export type Reply = { body: string; options?: Option[]; kind?: string };
@@ -50,6 +52,7 @@ export type ConvData = {
   doctorId?: string;
   doctorName?: string;
   date?: string;
+  session?: SessionId;
   slot?: SlotChoice;
   holdId?: string;
   appointmentId?: string;
@@ -184,13 +187,6 @@ async function prompt(c: Ctx, state: S, prefix = ""): Promise<void> {
       );
       return;
     }
-    case S.OFFERING_MESSAGING_CONSENT:
-      say(
-        c,
-        `${lead}Would you like appointment confirmations and reminders on this WhatsApp number? You can reply STOP at any time to opt out.`,
-        YES_NO("Yes, please", "No thanks"),
-      );
-      return;
     case S.SELECTING_DEPARTMENT: {
       const departments = await listDepartmentsWithDoctors(c.tx, c.clinic.id);
       if (departments.length === 0) {
@@ -224,8 +220,10 @@ async function prompt(c: Ctx, state: S, prefix = ""): Promise<void> {
       const options: Option[] = [];
       for (let offset = 0; offset < BOOKING_HORIZON_DAYS && options.length < 10; offset += 1) {
         const date = addDays(today, offset);
-        const count = slotsForDate(pool, date, c.now).length;
-        if (count > 0) options.push({ id: date, title: formatClinicDate(date, c.clinic.timezone), description: `${count} time${count === 1 ? "" : "s"} free` });
+        const open = new Set(slotsForDate(pool, date, c.now).map((slot) => sessionOfInstant(slot.startsAt, c.clinic.timezone)));
+        if (open.size === 0) continue;
+        const sessions = SESSIONS.filter((session) => open.has(session.id)).map((session) => session.title);
+        options.push({ id: date, title: formatClinicDate(date, c.clinic.timezone), description: sessions.join(" · ") });
       }
       if (options.length === 0) {
         say(c, `${lead}There are no free appointments in the next ${BOOKING_HORIZON_DAYS} days. Would you like reception to help?`, [
@@ -234,31 +232,53 @@ async function prompt(c: Ctx, state: S, prefix = ""): Promise<void> {
         ]);
         return;
       }
-      say(c, `${lead}Which day works for you?`, options);
+      const timings = weeklyTimings(pool.doctors.flatMap((doctor) => doctor.availability));
+      say(c, `${lead}${timings ? `${timings}\n\n` : ""}Which day works for you?`, options);
+      return;
+    }
+    case S.SELECTING_SESSION: {
+      const date = c.data.date ?? localToday(c);
+      const pool = await loadDayPool(c, date);
+      const slots = slotsForDate(pool, date, c.now);
+      const weekday = weekdayOf(date);
+      const hours = sessionHours(pool.doctors.flatMap((doctor) => doctor.availability).filter((window) => window.weekday === weekday));
+      const options: Option[] = [];
+      for (const session of SESSIONS) {
+        const count = slots.filter((slot) => sessionOfInstant(slot.startsAt, c.clinic.timezone) === session.id).length;
+        if (count === 0) continue;
+        const range = hours[session.id];
+        options.push({ id: session.id, title: range ? `${session.title} (${range})` : session.title, description: `${count} time${count === 1 ? "" : "s"} free` });
+      }
+      if (options.length === 0) {
+        say(c, `${lead}That day is fully booked or the clinic is closed. Let's pick another day.`, [{ id: "other_date", title: "Choose another day" }]);
+        return;
+      }
+      say(c, `${lead}Which session suits you on ${formatClinicDate(date, c.clinic.timezone)}?`, [...options, { id: "other_date", title: "Choose another day" }]);
       return;
     }
     case S.SELECTING_SLOT: {
       const date = c.data.date ?? localToday(c);
-      const pool = await loadSchedulePool(c.tx, {
-        clinicId: c.clinic.id,
-        departmentId: c.data.departmentId ?? "",
-        doctorId: c.data.doctorId && c.data.doctorId !== "any" ? c.data.doctorId : undefined,
-        fromDate: date,
-        days: 1,
-        now: c.now,
-      });
-      const slots = slotsForDate(pool, date, c.now).slice(0, 9);
+      const pool = await loadDayPool(c, date);
+      const session = c.data.session;
+      const slots = slotsForDate(pool, date, c.now)
+        .filter((slot) => !session || sessionOfInstant(slot.startsAt, c.clinic.timezone) === session)
+        .slice(0, 8);
+      const label = session ? `${sessionTitle(session).toLowerCase()} ` : "";
       if (slots.length === 0) {
-        say(c, `${lead}That day is fully booked or the clinic is closed. Let's pick another day.`, [{ id: "other_date", title: "Choose another day" }]);
+        say(c, `${lead}There are no free ${label}times left on that day. Let's pick something else.`, [
+          { id: "other_session", title: "Choose another session" },
+          { id: "other_date", title: "Choose another day" },
+        ]);
         return;
       }
       const showDoctor = !c.data.doctorId || c.data.doctorId === "any";
-      say(c, `${lead}Free times on ${formatClinicDate(date, c.clinic.timezone)}:`, [
+      say(c, `${lead}Free ${label}times on ${formatClinicDate(date, c.clinic.timezone)}:`, [
         ...slots.map((slot) => ({
           id: `${slot.doctorId}|${slot.startsAt.toISOString()}`,
           title: formatClinicTime(slot.startsAt, c.clinic.timezone),
           description: showDoctor ? slot.doctorName : undefined,
         })),
+        { id: "other_session", title: "Choose another session" },
         { id: "other_date", title: "Choose another day" },
       ]);
       return;
@@ -278,6 +298,12 @@ async function prompt(c: Ctx, state: S, prefix = ""): Promise<void> {
       );
       return;
     }
+    case S.SELECTING_PAYMENT:
+      say(c, `${lead}💳 Payment gateway (sample)\n\nHow would you like to pay for your consultation?`, [
+        { id: "pay_now", title: "Pay now" },
+        { id: "pay_reception", title: "Pay at reception" },
+      ]);
+      return;
     case S.MANAGING_APPOINTMENTS: {
       const appointments = await c.tx.appointment.findMany({
         where: { clinicId: c.clinic.id, patientId: c.patientId ?? "", status: AppointmentStatus.BOOKED, startsAt: { gt: c.now } },
@@ -394,6 +420,19 @@ async function recordConsent(c: Ctx, type: ConsentType, granted: boolean) {
 
 // ---------- Flow helpers ----------
 
+function loadDayPool(c: Ctx, date: string) {
+  return loadSchedulePool(c.tx, {
+    clinicId: c.clinic.id,
+    departmentId: c.data.departmentId ?? "",
+    doctorId: c.data.doctorId && c.data.doctorId !== "any" ? c.data.doctorId : undefined,
+    fromDate: date,
+    days: 1,
+    now: c.now,
+  });
+}
+
+const ARRIVAL_NOTE = `Please arrive 10 minutes early. Reply "menu" if you need anything else.`;
+
 async function afterIdentified(c: Ctx, prefix: string) {
   const next = c.data.next;
   c.data.next = undefined;
@@ -496,7 +535,6 @@ async function finishRegistration(c: Ctx) {
     prefix = `Thank you ${firstName(draft.fullName)}, you're registered. ✅`;
   }
   c.data.flow = undefined;
-  if (!c.messagingConsentAt) return goto(c, S.OFFERING_MESSAGING_CONSENT, prefix);
   return afterIdentified(c, prefix);
 }
 
@@ -615,12 +653,6 @@ async function onState(c: Ctx, input: Input): Promise<void> {
       return goto(c, S.COLLECTING_SEX, "", false);
     }
 
-    case S.OFFERING_MESSAGING_CONSENT: {
-      if (!choice) return invalid(c, "Please choose Yes or No.");
-      await recordConsent(c, ConsentType.MESSAGING, choice.id === "yes");
-      return afterIdentified(c, choice.id === "yes" ? "Great, I'll keep you updated." : "No problem, no reminders will be sent.");
-    }
-
     case S.SELECTING_DEPARTMENT: {
       if (!choice) return invalid(c, "Please choose one of the options below.");
       if (choice.id === "reception") return handover(c, "No departments available");
@@ -642,12 +674,22 @@ async function onState(c: Ctx, input: Input): Promise<void> {
       if (choice.id === "reception") return handover(c, "No availability");
       if (choice.id === "menu") return resetToMenu(c);
       c.data.date = choice.id;
+      c.data.session = undefined;
+      return goto(c, S.SELECTING_SESSION);
+    }
+
+    case S.SELECTING_SESSION: {
+      if (!choice) return invalid(c, "Please choose a session below.");
+      if (choice.id === "other_date") return goto(c, S.SELECTING_DATE);
+      if (!isSessionId(choice.id)) return invalid(c, "Please choose a session below.");
+      c.data.session = choice.id;
       return goto(c, S.SELECTING_SLOT);
     }
 
     case S.SELECTING_SLOT: {
       if (!choice) return invalid(c, "Please choose one of the times below.");
       if (choice.id === "other_date") return goto(c, S.SELECTING_DATE);
+      if (choice.id === "other_session") return goto(c, S.SELECTING_SESSION);
       const [doctorId, startsIso] = choice.id.split("|");
       const startsAt = new Date(startsIso);
       if (!doctorId || Number.isNaN(startsAt.valueOf()) || !c.patientId || !c.data.departmentId) {
@@ -700,9 +742,38 @@ async function onState(c: Ctx, input: Input): Promise<void> {
       const when = `${formatClinicDate(result.appointment.startsAt, c.clinic.timezone)}, ${formatClinicTime(result.appointment.startsAt, c.clinic.timezone)}`;
       const doctorName = c.data.slot?.doctorName ?? "your doctor";
       const clinicLine = c.clinic.address ? `\n📍 ${c.clinic.address}` : "";
+      // The booking is final here; the payment step that follows is a sample and never undoes it.
+      c.data = { stack: [], appointmentId: result.appointment.id };
+      c.state = S.SELECTING_PAYMENT;
+      say(c, `✅ You're booked!\n\n${doctorName}\n🗓 ${when}\nReference: ${result.appointment.reference}${clinicLine}`, undefined, "BOOKING_CONFIRMATION");
+      return prompt(c, S.SELECTING_PAYMENT);
+    }
+
+    case S.SELECTING_PAYMENT: {
+      if (!choice) return invalid(c, "Please choose Pay now or Pay at reception.");
+      const appointment = await c.tx.appointment.findFirst({
+        where: { id: c.data.appointmentId ?? "", clinicId: c.clinic.id, patientId: c.patientId ?? "" },
+        select: { id: true, reference: true },
+      });
+      const payNow = choice.id === "pay_now";
+      if (appointment) {
+        c.audits.push({
+          clinicId: c.clinic.id,
+          action: payNow ? "PAYMENT_SAMPLE_COMPLETED" : "PAYMENT_AT_RECEPTION_CHOSEN",
+          entity: "Appointment",
+          entityId: appointment.id,
+          metadata: { source: "WHATSAPP", sample: true },
+        });
+      }
       c.data = { stack: [] };
       c.state = S.COMPLETED;
-      say(c, `✅ You're booked!\n\n${doctorName}\n🗓 ${when}\nReference: ${result.appointment.reference}${clinicLine}\n\nPlease arrive 10 minutes early. Reply "menu" if you need anything else.`, undefined, "BOOKING_CONFIRMATION");
+      const reference = appointment ? `\nReference: ${appointment.reference}` : "";
+      say(
+        c,
+        payNow
+          ? `✅ Payment successful (sample)${reference}\n\nThis is a demo payment gateway, so no money was charged.\n\n${ARRIVAL_NOTE}`
+          : `No problem, you can pay at reception when you arrive.${reference}\n\n${ARRIVAL_NOTE}`,
+      );
       return;
     }
 
@@ -796,7 +867,7 @@ async function dispatch(c: Ctx, input: Input) {
     c.state = previous;
     return prompt(c, previous);
   }
-  if (lower === "cancel" && !input.optionId && !([S.MAIN_MENU, S.COMPLETED, S.CONFIRMING_CANCELLATION] as S[]).includes(c.state)) {
+  if (lower === "cancel" && !input.optionId && !([S.MAIN_MENU, S.COMPLETED, S.CONFIRMING_CANCELLATION, S.SELECTING_PAYMENT] as S[]).includes(c.state)) {
     return resetToMenu(c, "No problem, I've cancelled that.");
   }
   if (lower === "help" && !input.optionId) return prompt(c, c.state);

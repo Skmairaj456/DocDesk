@@ -134,13 +134,17 @@ async function seed(db) {
     skipDuplicates: true,
   });
 
+  // Weekly sessions, Mon–Sat: morning 9–1, afternoon 2–5, evening 6–8.
+  const sessions = [["09:00", "13:00"], ["14:00", "17:00"], ["18:00", "20:00"]];
   for (const doctorId of Object.values(id.doctors)) {
     for (const weekday of [1, 2, 3, 4, 5, 6]) {
-      await db.doctorAvailability.upsert({
-        where: { doctorId_weekday_startsAt: { doctorId, weekday, startsAt: "09:00" } },
-        update: { endsAt: "17:00", isAvailable: true },
-        create: { doctorId, weekday, startsAt: "09:00", endsAt: "17:00" },
-      });
+      for (const [startsAt, endsAt] of sessions) {
+        await db.doctorAvailability.upsert({
+          where: { doctorId_weekday_startsAt: { doctorId, weekday, startsAt } },
+          update: { endsAt, isAvailable: true },
+          create: { doctorId, weekday, startsAt, endsAt },
+        });
+      }
     }
   }
 
