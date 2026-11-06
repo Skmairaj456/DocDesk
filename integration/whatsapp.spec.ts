@@ -70,7 +70,8 @@ describe("WhatsApp conversation engine (real PostgreSQL)", () => {
     assert.match(lastBot(conversation), /Which session suits you/);
     const sessionOptions = JSON.stringify([...conversation.messages].reverse().find((m) => m.direction === "OUTBOUND")?.interactive);
     assert.match(sessionOptions, /(Morning|Afternoon|Evening) \(\d/);
-    for (const text of ["1", "1", "1"]) conversation = await say(phone, text);
+    for (const text of ["1", "1"]) conversation = await say(phone, text);
+    assert.ok(!conversation.messages.some((m) => /Please confirm your appointment|appointment confirmations and reminders/.test(m.body)), "no confirm or reminders prompts");
     assert.equal(conversation.state, ConversationState.SELECTING_PAYMENT);
     const bot = conversation.messages.filter((m) => m.direction === "OUTBOUND").map((m) => m.body);
     assert.ok(bot.some((body) => /You're booked/.test(body)));
@@ -178,7 +179,7 @@ describe("WhatsApp conversation engine (real PostgreSQL)", () => {
 
   it("lets a patient cancel only their own appointment", async () => {
     const phone = newPhone();
-    for (const text of ["hi", "1", "2", "1", "Dev Patel", "02/02/1991", "2", "1", "1", "1", "1", "1", "1", "2"]) await say(phone, text);
+    for (const text of ["hi", "1", "2", "1", "Dev Patel", "02/02/1991", "2", "1", "1", "1", "1", "1", "2"]) await say(phone, text);
     let conversation = await conversationOf(phone);
     assert.equal(conversation.state, ConversationState.COMPLETED);
     for (const text of ["menu", "2", "1", "1", "1"]) conversation = await say(phone, text);

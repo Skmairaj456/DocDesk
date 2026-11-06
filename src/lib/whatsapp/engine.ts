@@ -12,7 +12,6 @@ import {
 import { clinicLocalDate } from "@/lib/booking-time.mjs";
 import {
   BOOKING_HORIZON_DAYS,
-  HOLD_MINUTES,
   cancelAppointment,
   confirmHold,
   createHold,
@@ -283,21 +282,8 @@ async function prompt(c: Ctx, state: S, prefix = ""): Promise<void> {
       ]);
       return;
     }
-    case S.CONFIRMING_BOOKING: {
-      const slot = c.data.slot;
-      if (!slot) return prompt(c, S.SELECTING_SLOT, prefix);
-      const startsAt = new Date(slot.startsAt);
-      say(
-        c,
-        `${lead}Please confirm your appointment:\n• ${c.data.departmentName ?? "Consultation"}\n• ${slot.doctorName}\n• ${formatClinicDate(startsAt, c.clinic.timezone)}, ${formatClinicTime(startsAt, c.clinic.timezone)}\n\nI'm holding this time for ${HOLD_MINUTES} minutes.`,
-        [
-          { id: "confirm", title: "Confirm booking" },
-          { id: "change", title: "Pick a different time" },
-          { id: "cancel_flow", title: "Cancel" },
-        ],
-      );
-      return;
-    }
+    case S.CONFIRMING_BOOKING:
+      return returnToTimes(c, prefix);
     case S.SELECTING_PAYMENT:
       say(c, `${lead}💳 Payment gateway (sample)\n\nHow would you like to pay for your consultation?`, [
         { id: "pay_now", title: "Pay now" },
@@ -431,7 +417,39 @@ function loadDayPool(c: Ctx, date: string) {
   });
 }
 
-const ARRIVAL_NOTE = `Please arrive 10 minutes early. Reply "menu" if you need anything else.`;
+async function bookHeldSlot(c: Ctx) {
+  if (!c.data.holdId || !c.patientId) return goto(c, S.SELECTING_SLOT, "Let's find a time again.", false);
+  const result = await confirmHold(c.tx, {
+    clinicId: c.clinic.id,
+    patientId: c.patientId,
+    holdId: c.data.holdId,
+    source: AppointmentSource.WHATSAPP,
+  });
+  if (!result.ok) {
+    c.data.holdId = undefined;
+    return goto(c, S.SELECTING_SLOT, "Sorry, that time was just taken. Here are the times that are free now.", false);
+  }
+  const when = `${formatClinicDate(result.appointment.startsAt, c.clinic.timezone)}, ${formatClinicTime(result.appointment.startsAt, c.clinic.timezone)}`;
+  const doctorName = c.data.slot?.doctorName ?? "your doctor";
+  const department = c.data.departmentName ? `${c.data.departmentName} · ` : "";
+  const clinicLine = c.clinic.address ? `\n📍 ${c.clinic.address}` : "";
+  // The booking is final here; the payment step that follows is a sample and never undoes it.
+  c.data = { stack: [], appointmentId: result.appointment.id };
+  c.state = S.SELECTING_PAYMENT;
+  say(c, `✅ You're booked!\n\n${department}${doctorName}\n🗓 ${when}\nReference: ${result.appointment.reference}${clinicLine}`, undefined, "BOOKING_CONFIRMATION");
+  return prompt(c, S.SELECTING_PAYMENT);
+}
+
+async function returnToTimes(c: Ctx, prefix = "") {
+  if (c.data.holdId) await releaseHold(c.tx, c.clinic.id, c.data.holdId);
+  c.data.holdId = undefined;
+  c.data.slot = undefined;
+  c.state = S.SELECTING_SLOT;
+  c.data.invalid = 0;
+  return prompt(c, S.SELECTING_SLOT, prefix);
+}
+
+const ARRIVAL_NOTE =`Please arrive 10 minutes early. Reply "menu" if you need anything else.`;
 
 async function afterIdentified(c: Ctx, prefix: string) {
   const next = c.data.next;
@@ -716,38 +734,13 @@ async function onState(c: Ctx, input: Input): Promise<void> {
       if (!hold.ok) return prompt(c, S.SELECTING_SLOT, "Sorry, that time was just taken. Here are the times that are still free.");
       c.data.holdId = hold.holdId;
       c.data.slot = { doctorId, doctorName: doctor.name, startsAt: startsAt.toISOString(), endsAt: endsAt.toISOString() };
-      return goto(c, S.CONFIRMING_BOOKING);
+      // Choosing a time books it straight away; there is no separate confirmation step.
+      return bookHeldSlot(c);
     }
 
-    case S.CONFIRMING_BOOKING: {
-      if (!choice) return invalid(c, "Please choose one of the options below.");
-      if (choice.id === "cancel_flow") return resetToMenu(c, "No problem, I've cancelled that.");
-      if (choice.id === "change") {
-        if (c.data.holdId) await releaseHold(c.tx, c.clinic.id, c.data.holdId);
-        c.data.holdId = undefined;
-        return goto(c, S.SELECTING_SLOT);
-      }
-      if (!c.data.holdId || !c.patientId) return goto(c, S.SELECTING_SLOT, "Let's find a time again.");
-      const result = await confirmHold(c.tx, {
-        clinicId: c.clinic.id,
-        patientId: c.patientId,
-        holdId: c.data.holdId,
-        source: AppointmentSource.WHATSAPP,
-      });
-      if (!result.ok) {
-        c.data.holdId = undefined;
-        const why = result.reason === "EXPIRED" ? "Your held time ran out." : "Sorry, that time was just taken.";
-        return goto(c, S.SELECTING_SLOT, `${why} Here are the times that are free now.`, false);
-      }
-      const when = `${formatClinicDate(result.appointment.startsAt, c.clinic.timezone)}, ${formatClinicTime(result.appointment.startsAt, c.clinic.timezone)}`;
-      const doctorName = c.data.slot?.doctorName ?? "your doctor";
-      const clinicLine = c.clinic.address ? `\n📍 ${c.clinic.address}` : "";
-      // The booking is final here; the payment step that follows is a sample and never undoes it.
-      c.data = { stack: [], appointmentId: result.appointment.id };
-      c.state = S.SELECTING_PAYMENT;
-      say(c, `✅ You're booked!\n\n${doctorName}\n🗓 ${when}\nReference: ${result.appointment.reference}${clinicLine}`, undefined, "BOOKING_CONFIRMATION");
-      return prompt(c, S.SELECTING_PAYMENT);
-    }
+    // No longer offered. A conversation still parked on the old confirmation screen goes back to the times.
+    case S.CONFIRMING_BOOKING:
+      return returnToTimes(c);
 
     case S.SELECTING_PAYMENT: {
       if (!choice) return invalid(c, "Please choose Pay now or Pay at reception.");
@@ -821,14 +814,9 @@ async function onState(c: Ctx, input: Input): Promise<void> {
       if (!choice) return invalid(c, "Please choose one of the options below.");
       if (choice.id === "menu") return resetToMenu(c);
       if (choice.id === "reception") return handover(c, "Requested after stuck or expired session");
-      let target = c.data.resumeState ?? S.MAIN_MENU;
+      const target = c.data.resumeState ?? S.MAIN_MENU;
       c.data.resumeReason = undefined;
-      if (target === S.CONFIRMING_BOOKING) {
-        const hold = c.data.holdId
-          ? await c.tx.appointmentHold.findFirst({ where: { id: c.data.holdId, clinicId: c.clinic.id, status: "ACTIVE", expiresAt: { gt: c.now } }, select: { id: true } })
-          : null;
-        if (!hold) target = S.SELECTING_SLOT;
-      }
+      if (target === S.CONFIRMING_BOOKING) return returnToTimes(c, "Welcome back!");
       c.state = target;
       c.data.invalid = 0;
       return prompt(c, target, "Welcome back!");
