@@ -23,7 +23,7 @@ import {
   type Tx,
 } from "@/lib/booking-service";
 import { SESSIONS, isSessionId, sessionHours, sessionOfInstant, sessionTitle, weeklyTimings, type SessionId } from "@/lib/whatsapp/sessions";
-import { addDays, firstName, formatClinicDate, formatClinicTime, formatDobForDisplay, normalizePhone, parseDateOfBirth, parseName } from "@/lib/whatsapp/text";
+import { addDays, firstName, formatClinicDate, formatClinicTime, normalizePhone, parseDateOfBirth, parseName } from "@/lib/whatsapp/text";
 import { weekdayOf } from "@/lib/slots";
 
 export type Option = { id: string; title: string; description?: string };
@@ -109,14 +109,6 @@ function localToday(c: Ctx) {
   return clinicLocalDate(c.now, c.clinic.timezone);
 }
 
-function dobText(date: Date | null) {
-  return date ? formatDobForDisplay(date.toISOString().slice(0, 10)) : "not provided";
-}
-
-function sexText(sex: string | null) {
-  return ({ MALE: "Male", FEMALE: "Female", OTHER: "Other", NOT_SPECIFIED: "Prefer not to say" } as Record<string, string>)[sex ?? ""] ?? "not provided";
-}
-
 const MAIN_MENU: Option[] = [
   { id: "book", title: "Book an appointment" },
   { id: "manage", title: "Manage my appointments" },
@@ -142,25 +134,22 @@ async function prompt(c: Ctx, state: S, prefix = ""): Promise<void> {
       say(c, `${lead}${intro}How can I help you today?`, MAIN_MENU);
       return;
     }
+    // No longer asked: the phone number tells us whether the patient is on record, and the privacy notice
+    // is shown with the name question. Conversations parked on these screens carry on from registration.
     case S.ASKING_VISITED:
-      say(c, `${lead}Sure! Have you visited us before?`, [
-        { id: "existing", title: "Yes, I'm an existing patient" },
-        { id: "new", title: "No, this is my first visit" },
-      ]);
-      return;
+    case S.CONSENT_REGISTRATION:
+      return startNewPatient(c);
     case S.VERIFYING_EXISTING_PATIENT:
       say(c, `${lead}To protect your privacy, please type your date of birth (for example 25/03/1990).`);
       return;
-    case S.CONSENT_REGISTRATION:
-      say(
-        c,
-        `${lead}To book your visit I'll save your name, date of birth and this phone number, so ${c.clinic.name} can find your record. Your details are only used by the clinic. Is that OK?`,
-        YES_NO("Yes, that's OK", "No, not now"),
-      );
+    case S.COLLECTING_NAME: {
+      const notice =
+        c.data.flow === "register" && !c.registrationConsentAt
+          ? `Let's get you registered. I'll save your name, date of birth and this number so ${c.clinic.name} can find your record. Reply "cancel" to stop.\n\n`
+          : "";
+      say(c, `${lead}${notice}${c.data.flow === "register" ? "Step 1 of 3 · " : ""}What's your full name?`);
       return;
-    case S.COLLECTING_NAME:
-      say(c, `${lead}${c.data.flow === "register" ? "Step 1 of 3 · " : ""}What's your full name?`);
-      return;
+    }
     case S.COLLECTING_DOB:
       say(c, `${lead}${c.data.flow === "register" ? "Step 2 of 3 · " : ""}What's your date of birth? You can type it like 25/03/1990.`);
       return;
@@ -172,20 +161,9 @@ async function prompt(c: Ctx, state: S, prefix = ""): Promise<void> {
         { id: "NOT_SPECIFIED", title: "Prefer not to say" },
       ]);
       return;
-    case S.CONFIRMING_DETAILS: {
-      const patient = await patientOf(c);
-      say(
-        c,
-        `${lead}Here's what I have:\n• Name: ${patient?.fullName ?? "-"}\n• Date of birth: ${dobText(patient?.dateOfBirth ?? null)}\n• Sex: ${sexText(patient?.sex ?? null)}\n• Phone: +${c.phone}\n\nIs this correct?`,
-        [
-          { id: "confirm", title: "Yes, that's correct" },
-          { id: "edit_name", title: "Change my name" },
-          { id: "edit_dob", title: "Change date of birth" },
-          { id: "edit_sex", title: "Change sex" },
-        ],
-      );
-      return;
-    }
+    // No longer shown; patients can fix details later from "Update my details".
+    case S.CONFIRMING_DETAILS:
+      return finishRegistration(c);
     case S.SELECTING_DEPARTMENT: {
       const departments = await listDepartmentsWithDoctors(c.tx, c.clinic.id);
       if (departments.length === 0) {
@@ -199,7 +177,17 @@ async function prompt(c: Ctx, state: S, prefix = ""): Promise<void> {
       return;
     }
     case S.SELECTING_DOCTOR: {
-      const doctors = await listDoctors(c.tx, c.clinic.id, c.data.departmentId ?? "");
+      if (!c.data.departmentId) {
+        // One list of every doctor with their department, instead of a department step then a doctor step.
+        const pairs = await bookableDoctors(c);
+        say(
+          c,
+          `${lead}Who would you like to see?`,
+          pairs.map((pair) => ({ id: `${pair.doctorId}|${pair.departmentId}`, title: pair.doctorName, description: pair.departmentName })),
+        );
+        return;
+      }
+      const doctors = await listDoctors(c.tx, c.clinic.id, c.data.departmentId);
       say(c, `${lead}Would you like a particular doctor in ${c.data.departmentName ?? "this department"}?`, [
         { id: "any", title: "Any available doctor" },
         ...doctors.slice(0, 9).map((d) => ({ id: d.id, title: d.name })),
@@ -460,13 +448,41 @@ async function afterIdentified(c: Ctx, prefix: string) {
   return resetToMenu(c, prefix);
 }
 
+const MAX_DOCTOR_CHOICES = 10;
+
+async function bookableDoctors(c: Ctx) {
+  const doctors = await c.tx.doctorProfile.findMany({
+    where: { clinicId: c.clinic.id, membership: { isActive: true } },
+    select: {
+      id: true,
+      membership: { select: { user: { select: { displayName: true } } } },
+      departments: { where: { department: { isActive: true } }, select: { department: { select: { id: true, name: true } } } },
+    },
+  });
+  return doctors
+    .flatMap((doctor) =>
+      doctor.departments.map(({ department }) => ({
+        doctorId: doctor.id,
+        doctorName: doctor.membership.user.displayName,
+        departmentId: department.id,
+        departmentName: department.name,
+      })),
+    )
+    .sort((a, b) => a.departmentName.localeCompare(b.departmentName) || a.doctorName.localeCompare(b.doctorName));
+}
+
 async function startBooking(c: Ctx, prefix: string) {
-  const departments = await listDepartmentsWithDoctors(c.tx, c.clinic.id);
-  if (departments.length === 1) {
-    c.data.departmentId = departments[0].id;
-    c.data.departmentName = departments[0].name;
-    return goto(c, S.SELECTING_DOCTOR, prefix);
+  const pairs = await bookableDoctors(c);
+  if (pairs.length === 1) {
+    // Only one doctor to book: skip straight to the days.
+    c.data.departmentId = pairs[0].departmentId;
+    c.data.departmentName = pairs[0].departmentName;
+    c.data.doctorId = pairs[0].doctorId;
+    c.data.doctorName = pairs[0].doctorName;
+    return goto(c, S.SELECTING_DATE, prefix);
   }
+  if (pairs.length > 0 && pairs.length <= MAX_DOCTOR_CHOICES) return goto(c, S.SELECTING_DOCTOR, prefix);
+  // No doctors, or too many for one list: fall back to choosing a department first.
   return goto(c, S.SELECTING_DEPARTMENT, prefix);
 }
 
@@ -475,7 +491,7 @@ async function nextRegistrationStep(c: Ctx, prefix: string) {
   if (!patient?.fullName) return goto(c, S.COLLECTING_NAME, prefix);
   if (!patient.dateOfBirth) return goto(c, S.COLLECTING_DOB, prefix);
   if (!c.data.sexAnswered) return goto(c, S.COLLECTING_SEX, prefix);
-  return goto(c, S.CONFIRMING_DETAILS, prefix);
+  return finishRegistration(c);
 }
 
 async function saveField(c: Ctx, field: "name" | "dob" | "sex", value: string | null) {
@@ -516,10 +532,6 @@ async function afterFieldSaved(c: Ctx, ack: string) {
     c.data.flow = undefined;
     c.audits.push({ clinicId: c.clinic.id, action: "PATIENT_UPDATED_VIA_WHATSAPP", entity: "Patient", entityId: c.patientId ?? "" });
     return resetToMenu(c, `${ack} Your details are updated. ✅`);
-  }
-  if (c.data.flow === "edit-confirm") {
-    c.data.flow = "register";
-    return goto(c, S.CONFIRMING_DETAILS, ack, false);
   }
   return nextRegistrationStep(c, ack);
 }
@@ -594,7 +606,6 @@ async function startNewPatient(c: Ctx) {
     // One record per phone number: never create a duplicate, verify instead.
     return goto(c, S.VERIFYING_EXISTING_PATIENT, "I may already have you on record under this number.");
   }
-  if (!c.registrationConsentAt) return goto(c, S.CONSENT_REGISTRATION);
   c.data.flow = "register";
   return nextRegistrationStep(c, "");
 }
@@ -618,8 +629,8 @@ async function onState(c: Ctx, input: Input): Promise<void> {
         c.data.next = "book";
         const patient = await patientOf(c);
         if (patient?.registrationStatus === RegistrationStatus.COMPLETE) return afterIdentified(c, "");
-        if (patient) return startNewPatient(c);
-        return goto(c, S.ASKING_VISITED);
+        // A number already on record is asked for date of birth; anyone else goes straight to registration.
+        return startNewPatient(c);
       }
       c.data.next = choice.id === "manage" ? "manage" : "update";
       const patient = await patientOf(c);
@@ -628,23 +639,17 @@ async function onState(c: Ctx, input: Input): Promise<void> {
     }
 
     case S.ASKING_VISITED:
-      if (!choice) return invalid(c, "Please choose one of the options below.");
-      if (choice.id === "existing") return goto(c, S.VERIFYING_EXISTING_PATIENT);
+    case S.CONSENT_REGISTRATION:
       return startNewPatient(c);
 
     case S.VERIFYING_EXISTING_PATIENT:
       return verifyExisting(c, input);
 
-    case S.CONSENT_REGISTRATION:
-      if (!choice) return invalid(c, "Please choose Yes or No.");
-      if (choice.id === "no") return resetToMenu(c, "No problem. I haven't saved anything. You can book any time.");
-      await recordConsent(c, ConsentType.REGISTRATION, true);
-      c.data.flow = "register";
-      return nextRegistrationStep(c, "Thank you.");
-
     case S.COLLECTING_NAME: {
       const name = parseName(input.text);
       if (!name) return invalid(c, "Please type your full name using letters, for example Rahul Sharma.");
+      // Typing a name after the privacy notice is the patient's agreement to registration.
+      if (c.data.flow === "register" && !c.registrationConsentAt) await recordConsent(c, ConsentType.REGISTRATION, true);
       await saveField(c, "name", name);
       return afterFieldSaved(c, `Thanks, ${firstName(name)}.`);
     }
@@ -662,14 +667,8 @@ async function onState(c: Ctx, input: Input): Promise<void> {
       return afterFieldSaved(c, "Noted.");
     }
 
-    case S.CONFIRMING_DETAILS: {
-      if (!choice) return invalid(c, "Please choose one of the options below.");
-      if (choice.id === "confirm") return finishRegistration(c);
-      c.data.flow = "edit-confirm";
-      if (choice.id === "edit_name") return goto(c, S.COLLECTING_NAME, "", false);
-      if (choice.id === "edit_dob") return goto(c, S.COLLECTING_DOB, "", false);
-      return goto(c, S.COLLECTING_SEX, "", false);
-    }
+    case S.CONFIRMING_DETAILS:
+      return finishRegistration(c);
 
     case S.SELECTING_DEPARTMENT: {
       if (!choice) return invalid(c, "Please choose one of the options below.");
@@ -682,6 +681,14 @@ async function onState(c: Ctx, input: Input): Promise<void> {
 
     case S.SELECTING_DOCTOR: {
       if (!choice) return invalid(c, "Please choose one of the options below.");
+      if (choice.id.includes("|")) {
+        const [doctorId, departmentId] = choice.id.split("|");
+        c.data.doctorId = doctorId;
+        c.data.doctorName = choice.title;
+        c.data.departmentId = departmentId;
+        c.data.departmentName = choice.description;
+        return goto(c, S.SELECTING_DATE);
+      }
       c.data.doctorId = choice.id;
       c.data.doctorName = choice.id === "any" ? undefined : choice.title;
       return goto(c, S.SELECTING_DATE);

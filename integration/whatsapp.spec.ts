@@ -59,12 +59,14 @@ after(async () => {
 describe("WhatsApp conversation engine (real PostgreSQL)", () => {
   it("registers a new patient and books an appointment end to end", async () => {
     const phone = newPhone();
-    for (const text of ["hi", "1", "2", "1", "Rahul Sharma", "25/03/1990", "1", "1"]) await say(phone, text);
+    // Menu → book → name → date of birth → sex, then straight to the days (the clinic has one doctor).
+    for (const text of ["hi", "1", "Rahul Sharma", "25/03/1990", "1"]) await say(phone, text);
     let conversation = await conversationOf(phone);
-    assert.equal(conversation.state, ConversationState.SELECTING_DOCTOR, "no reminders opt-in question after registration");
-    conversation = await say(phone, "1");
     assert.equal(conversation.state, ConversationState.SELECTING_DATE);
+    assert.match(lastBot(conversation), /you're registered/);
     assert.match(lastBot(conversation), /Weekly timings/);
+    const removed = /Have you visited us before|Is that OK\?|Here's what I have|Would you like a particular doctor/;
+    assert.ok(!conversation.messages.some((m) => removed.test(m.body)), "removed steps are not asked");
     conversation = await say(phone, "1");
     assert.equal(conversation.state, ConversationState.SELECTING_SESSION);
     assert.match(lastBot(conversation), /Which session suits you/);
@@ -107,7 +109,7 @@ describe("WhatsApp conversation engine (real PostgreSQL)", () => {
 
   it("processes parallel messages for one conversation in order, each exactly once", async () => {
     const phone = newPhone();
-    const texts = ["hi", "1", "2", "1", "Asha Menon"];
+    const texts = ["hi", "1", "Asha Menon"];
     let conversationId = "";
     for (const text of texts) {
       const result = await ingestInbound({ clinicId, phone, eventKey: `t:${randomUUID()}`, text, simulated: true });
@@ -127,12 +129,12 @@ describe("WhatsApp conversation engine (real PostgreSQL)", () => {
     await prisma.patient.create({
       data: { clinicId, fullName: "Kiran Rao", normalizedName: "kiran rao", phone: `+91${phone.slice(2)}`, normalizedPhone: phone.slice(2), dateOfBirth: new Date("1985-07-01T00:00:00.000Z") },
     });
-    for (const text of ["hi", "1", "1"]) await say(phone, text);
+    for (const text of ["hi", "1"]) await say(phone, text);
     let conversation = await say(phone, "01/01/2000");
     assert.equal(conversation.state, ConversationState.VERIFYING_EXISTING_PATIENT);
     assert.equal(conversation.patientId, null);
     conversation = await say(phone, "01/07/1985");
-    assert.equal(conversation.state, ConversationState.SELECTING_DOCTOR);
+    assert.equal(conversation.state, ConversationState.SELECTING_DATE);
     assert.ok(conversation.patientId);
   });
 
@@ -141,7 +143,7 @@ describe("WhatsApp conversation engine (real PostgreSQL)", () => {
     await prisma.patient.create({
       data: { clinicId, fullName: "Lata Joshi", normalizedName: "lata joshi", phone: `+91${phone.slice(2)}`, normalizedPhone: phone.slice(2), dateOfBirth: new Date("1970-01-01T00:00:00.000Z") },
     });
-    for (const text of ["hi", "1", "1", "02/02/1999", "03/03/1999"]) await say(phone, text);
+    for (const text of ["hi", "1", "02/02/1999", "03/03/1999"]) await say(phone, text);
     const conversation = await say(phone, "04/04/1999");
     assert.equal(conversation.mode, ConversationMode.HUMAN);
     assert.equal(conversation.patientId, null);
@@ -179,7 +181,7 @@ describe("WhatsApp conversation engine (real PostgreSQL)", () => {
 
   it("lets a patient cancel only their own appointment", async () => {
     const phone = newPhone();
-    for (const text of ["hi", "1", "2", "1", "Dev Patel", "02/02/1991", "2", "1", "1", "1", "1", "1", "2"]) await say(phone, text);
+    for (const text of ["hi", "1", "Dev Patel", "02/02/1991", "2", "1", "1", "1", "2"]) await say(phone, text);
     let conversation = await conversationOf(phone);
     assert.equal(conversation.state, ConversationState.COMPLETED);
     for (const text of ["menu", "2", "1", "1", "1"]) conversation = await say(phone, text);
@@ -207,5 +209,32 @@ describe("WhatsApp conversation engine (real PostgreSQL)", () => {
     );
     assert.equal(attempts.filter((a) => a.ok).length, 1);
     assert.equal(await prisma.appointment.count({ where: { clinicId, doctorId, startsAt, status: "BOOKED" } }), 1);
+  });
+
+  // Runs last: it adds a second doctor, which changes the flow for later conversations.
+  it("offers every doctor in one list when the clinic has more than one", async () => {
+    const user = await prisma.user.create({ data: { authSubject: randomUUID(), email: `dr2-${run}@example.test`, displayName: "Dr. Second" } });
+    const membership = await prisma.membership.create({ data: { clinicId, userId: user.id, role: "DOCTOR" } });
+    const second = await prisma.doctorProfile.create({ data: { clinicId, membershipId: membership.id, consultationMinutes: 30 } });
+    const ortho = await prisma.department.create({ data: { clinicId, name: "Orthopedics", code: `ORT${run}` } });
+    await prisma.doctorDepartment.create({ data: { doctorId: second.id, departmentId: ortho.id } });
+    for (const weekday of [1, 2, 3, 4, 5, 6, 7]) {
+      await prisma.doctorAvailability.create({ data: { doctorId: second.id, weekday, startsAt: "09:00", endsAt: "20:00" } });
+    }
+    const phone = newPhone();
+    for (const text of ["hi", "1", "Meera Iyer", "10/10/1992", "2"]) await say(phone, text);
+    let conversation = await conversationOf(phone);
+    assert.equal(conversation.state, ConversationState.SELECTING_DOCTOR);
+    assert.match(lastBot(conversation), /Who would you like to see?/);
+    const options = [...conversation.messages].reverse().find((m) => m.direction === "OUTBOUND")?.interactive as { title: string; description?: string }[];
+    assert.deepEqual(options.map((o) => `${o.title} · ${o.description}`), ["Dr. Test · General", "Dr. Second · Orthopedics"]);
+    conversation = await say(phone, "2");
+    assert.equal(conversation.state, ConversationState.SELECTING_DATE);
+    for (const text of ["1", "1", "1"]) conversation = await say(phone, text);
+    assert.equal(conversation.state, ConversationState.SELECTING_PAYMENT);
+    const patient = await prisma.patient.findFirstOrThrow({ where: { clinicId, normalizedPhone: phone } });
+    const appointment = await prisma.appointment.findFirstOrThrow({ where: { patientId: patient.id } });
+    assert.equal(appointment.doctorId, second.id);
+    assert.equal(appointment.departmentId, ortho.id);
   });
 });
