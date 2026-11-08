@@ -64,7 +64,9 @@ describe("WhatsApp conversation engine (real PostgreSQL)", () => {
     let conversation = await conversationOf(phone);
     assert.equal(conversation.state, ConversationState.SELECTING_DATE);
     assert.match(lastBot(conversation), /you're registered/);
-    assert.match(lastBot(conversation), /Weekly timings/);
+    assert.match(lastBot(conversation), /Which day works for you\?$/);
+    const dayOptions = [...conversation.messages].reverse().find((m) => m.direction === "OUTBOUND")?.interactive as { title: string; description?: string }[];
+    assert.ok(dayOptions.length > 0 && dayOptions.every((o) => !o.description), "the day list shows dates only");
     const removed = /Have you visited us before|Is that OK\?|Here's what I have|Would you like a particular doctor/;
     assert.ok(!conversation.messages.some((m) => removed.test(m.body)), "removed steps are not asked");
     conversation = await say(phone, "1");

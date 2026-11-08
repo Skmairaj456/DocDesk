@@ -22,7 +22,7 @@ import {
   slotsForDate,
   type Tx,
 } from "@/lib/booking-service";
-import { SESSIONS, isSessionId, sessionHours, sessionOfInstant, sessionTitle, weeklyTimings, type SessionId } from "@/lib/whatsapp/sessions";
+import { SESSIONS, isSessionId, sessionHours, sessionOfInstant, sessionTitle, type SessionId } from "@/lib/whatsapp/sessions";
 import { addDays, firstName, formatClinicDate, formatClinicTime, normalizePhone, parseDateOfBirth, parseName } from "@/lib/whatsapp/text";
 import { weekdayOf } from "@/lib/slots";
 
@@ -207,10 +207,8 @@ async function prompt(c: Ctx, state: S, prefix = ""): Promise<void> {
       const options: Option[] = [];
       for (let offset = 0; offset < BOOKING_HORIZON_DAYS && options.length < 10; offset += 1) {
         const date = addDays(today, offset);
-        const open = new Set(slotsForDate(pool, date, c.now).map((slot) => sessionOfInstant(slot.startsAt, c.clinic.timezone)));
-        if (open.size === 0) continue;
-        const sessions = SESSIONS.filter((session) => open.has(session.id)).map((session) => session.title);
-        options.push({ id: date, title: formatClinicDate(date, c.clinic.timezone), description: sessions.join(" · ") });
+        // Just the dates here; morning/afternoon/evening is asked on the next step.
+        if (slotsForDate(pool, date, c.now).length > 0) options.push({ id: date, title: formatClinicDate(date, c.clinic.timezone) });
       }
       if (options.length === 0) {
         say(c, `${lead}There are no free appointments in the next ${BOOKING_HORIZON_DAYS} days. Would you like reception to help?`, [
@@ -219,8 +217,7 @@ async function prompt(c: Ctx, state: S, prefix = ""): Promise<void> {
         ]);
         return;
       }
-      const timings = weeklyTimings(pool.doctors.flatMap((doctor) => doctor.availability));
-      say(c, `${lead}${timings ? `${timings}\n\n` : ""}Which day works for you?`, options);
+      say(c, `${lead}Which day works for you?`, options);
       return;
     }
     case S.SELECTING_SESSION: {
