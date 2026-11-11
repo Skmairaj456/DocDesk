@@ -285,3 +285,46 @@
   .profile-visit .recent-booking-source { display: none; }
   .profile-actions span { margin-left: 0; width: 100%; }
 }
+
+/* Doctor: clinical assessment section in the consultation drawer. */
+.assessment { background: white; border: 1px solid #e8ecf1; border-radius: 14px; display: flex; flex-direction: column; gap: 12px; padding: 18px; }
+.assessment h3 { color: #45546a; font-size: 15px; margin: 0; }
+.assessment-header { align-items: flex-start; display: flex; gap: 12px; justify-content: space-between; }
+.assessment-header p { color: #8993a2; font-size: 13px; margin: 4px 0 0; }
+.assessment-header small { color: #8993a2; font-size: 12px; white-space: nowrap; }
+.assessment-state { color: #8993a2; font-size: 13px; margin: 0; }
+.assessment-error { background: #fdf0ef; border: 1px solid #f4cfcb; border-radius: 10px; color: #a33a2f; font-size: 13px; margin: 0; padding: 10px 12px; }
+.assessment-section { border: 1px solid #edf0f4; border-radius: 10px; }
+.assessment-section > summary { align-items: center; cursor: pointer; display: flex; gap: 10px; justify-content: space-between; list-style: none; padding: 12px 14px; }
+.assessment-section > summary::-webkit-details-marker { display: none; }
+.assessment-section > summary span { color: #2f3b4e; font-size: 14px; font-weight: 650; }
+.assessment-section > summary span::before { color: #8993a2; content: "›"; display: inline-block; margin-right: 8px; transition: transform .15s; }
+.assessment-section[open] > summary span::before { transform: rotate(90deg); }
+.assessment-section > summary small { color: #8993a2; font-size: 12px; }
+.assessment-section[open] > summary { border-bottom: 1px solid #edf0f4; }
+.assessment-grid { display: grid; gap: 12px 14px; grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 14px; }
+.assessment-field { border: 0; color: #647187; display: flex; flex-direction: column; font-size: 13px; gap: 6px; margin: 0; min-width: 0; padding: 0; }
+.assessment-field legend { margin-bottom: 6px; padding: 0; }
+.assessment-field abbr { color: #2f3b4e; font-weight: 650; text-decoration: none; }
+.assessment-field small { color: #9aa5b4; font-size: 12px; font-weight: 400; }
+.assessment-wide { grid-column: 1 / -1; }
+.assessment-field input, .assessment-field select, .assessment-field textarea { background: #fff; border: 1px solid #dfe5ed; border-radius: 10px; color: #43536a; font: inherit; font-size: 14px; padding: 10px 12px; width: 100%; }
+.assessment-field textarea { line-height: 1.55; resize: vertical; }
+.assessment-field input:disabled, .assessment-field select:disabled, .assessment-field textarea:disabled { background: #f6f7f9; color: #43536a; }
+.assessment-field input:focus, .assessment-field select:focus, .assessment-field textarea:focus { border-color: #9db6e4; outline: 2px solid #e2ebfa; }
+.assessment-unit { align-items: center; display: flex; gap: 8px; }
+.assessment-unit input { min-width: 0; }
+.assessment-unit em, .assessment-unit b { color: #8993a2; font-size: 13px; font-style: normal; font-weight: 400; white-space: nowrap; }
+.assessment-subhead { color: #2f3b4e; font-size: 13px; font-weight: 650; margin: 4px 0 -4px; }
+.assessment-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.assessment-chips label { align-items: center; background: #fff; border: 1px solid #dfe5ed; border-radius: 999px; color: #45546a; cursor: pointer; display: inline-flex; font-size: 13px; gap: 6px; padding: 7px 12px; }
+.assessment-chips label.selected { background: #eef3fd; border-color: #9db6e4; color: #254d99; }
+.assessment-chips input { accent-color: #3766b2; margin: 0; }
+.assessment-chips small { color: #9aa5b4; font-size: 11px; }
+.assessment fieldset:disabled .assessment-chips label { cursor: default; }
+.assessment .doctor-consultation-actions { margin-top: 0; }
+@media (max-width: 640px) {
+  .assessment { padding: 14px; }
+  .assessment-grid { grid-template-columns: 1fr; padding: 12px; }
+  .assessment-header { flex-direction: column; gap: 4px; }
+}

@@ -35,6 +35,28 @@ enum VisitOutcome {
   DISCHARGED
 }
 
+enum MaritalStatus {
+  MARRIED
+  UNMARRIED
+}
+
+enum Comorbidity {
+  HTN
+  DM
+  THYROID
+  CVA
+  CHD
+  ASTHMA
+  SEIZURES
+  OTHER
+}
+
+enum Habit {
+  ALCOHOL
+  SMOKING
+  OTHER
+}
+
 enum FollowUpType {
   FOLLOW_UP
   REVISION
@@ -149,6 +171,7 @@ model Clinic {
   appointments   Appointment[]
   holds          AppointmentHold[]
   consultations  Consultation[]
+  clinicalAssessments ClinicalAssessment[]
   followUps      FollowUp[]
   conversations  WhatsAppConversation[]
   consents       ConsentEvent[]
@@ -216,6 +239,7 @@ model DoctorProfile {
   appointments          Appointment[]
   holds                 AppointmentHold[]
   consultations         Consultation[]
+  clinicalAssessments   ClinicalAssessment[]
   followUps             FollowUp[]
   scheduleBlocks        ScheduleBlock[]
 
@@ -247,6 +271,7 @@ model Patient {
   clinic          Clinic                 @relation(fields: [clinicId], references: [id], onDelete: Cascade)
   appointments    Appointment[]
   consultations   Consultation[]
+  clinicalAssessments ClinicalAssessment[]
   followUps       FollowUp[]
   conversations   WhatsAppConversation[]
   holds           AppointmentHold[]
@@ -280,6 +305,7 @@ model Appointment {
   doctor        DoctorProfile     @relation(fields: [doctorId], references: [id], onDelete: Restrict)
   scheduleBlock ScheduleBlock?
   consultation  Consultation?
+  clinicalAssessment ClinicalAssessment?
   followUpFor   FollowUp?         @relation("BookedFollowUp")
   holds         AppointmentHold[]
 
@@ -372,6 +398,47 @@ model Consultation {
 
   @@index([clinicId, patientId, createdAt])
   @@index([clinicId, doctorId, createdAt])
+}
+
+// Structured clinical assessment for one visit. Keyed by appointment, like Consultation, so the
+// assessment and the consultation note of a visit always belong together.
+model ClinicalAssessment {
+  id                   String         @id @default(uuid()) @db.Uuid
+  clinicId             String         @db.Uuid
+  appointmentId        String         @unique @db.Uuid
+  patientId            String         @db.Uuid
+  doctorId             String         @db.Uuid
+  bpSystolic           Int?
+  bpDiastolic          Int?
+  pulseRate            Int?
+  spo2                 Int?
+  weightKg             Decimal?       @db.Decimal(5, 1)
+  heightCm             Decimal?       @db.Decimal(5, 1)
+  maritalStatus        MaritalStatus?
+  chiefComplaints      String?
+  medicalHistory       String?
+  surgicalHistory      String?
+  comorbidities        Comorbidity[]  @default([])
+  comorbidityOther     String?
+  habits               Habit[]        @default([])
+  habitDetails         String?
+  drugAllergy          Boolean?
+  drugAllergyDetails   String?
+  investigationsAdded  String?
+  investigationsReview String?
+  provisionalDiagnosis String?
+  treatment            String?
+  reviewNotes          String?
+  advice               String?
+  discussed            String?
+  createdAt            DateTime       @default(now()) @db.Timestamptz(3)
+  updatedAt            DateTime       @updatedAt @db.Timestamptz(3)
+  clinic               Clinic         @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  appointment          Appointment    @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  patient              Patient        @relation(fields: [patientId], references: [id], onDelete: Restrict)
+  doctor               DoctorProfile  @relation(fields: [doctorId], references: [id], onDelete: Restrict)
+
+  @@index([clinicId, patientId, createdAt])
 }
 
 model FollowUp {

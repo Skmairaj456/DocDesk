@@ -11,7 +11,7 @@
     "typecheck": "tsc --noEmit",
     "test": "node --test",
     "test:db": "node scripts/run-database-isolation-tests.mjs",
-    "test:integration": "node scripts/with-test-db.mjs node --import tsx --test integration/whatsapp.spec.ts",
+    "test:integration": "node scripts/with-test-db.mjs node --import tsx --test integration/whatsapp.spec.ts integration/clinical-assessment.spec.ts",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate deploy",
     "db:dev": "prisma migrate dev",

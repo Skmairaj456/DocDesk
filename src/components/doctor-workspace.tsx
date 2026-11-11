@@ -3,6 +3,7 @@
 import type { VisitOutcome } from "@prisma/client";
 import Link from "next/link";
 import { FormEvent, useEffect, useMemo, useState } from "react";
+import ClinicalAssessment from "@/components/clinical-assessment";
 import type { LiveWorkspaceData } from "@/components/live-clinic-workspace";
 import RecentBookings, { bookingDay } from "@/components/recent-bookings";
 import { localDateTimeAsUtc } from "@/lib/booking-time.mjs";
@@ -678,6 +679,7 @@ export default function DoctorWorkspace(initialData: LiveWorkspaceData) {
               {patientRecord.consultations.length > 0 && <section className="doctor-history"><h3>Clinical notes and care history</h3>{patientRecord.consultations.filter((visit) => visit.id !== savedConsultation?.id).map((visit) => (
                 <article key={visit.id}><div><strong>{formatDate(visit.createdAt, initialData.timezone)}{visit.outcome ? ` · ${outcomeLabels[visit.outcome]}` : " · Draft"}</strong><p>{visit.note}</p></div>{visit.followUp && <small>{visit.followUp.type === "REVISION" ? "Revision" : "Follow-up"} · {formatDate(visit.followUp.dueAt, initialData.timezone)} · {statusLabel(visit.followUp.status)}</small>}</article>
               ))}</section>}
+              {(canEditConsultation || isReadOnly) && <ClinicalAssessment key={`${selectedAppointment.id}:${selectedAppointment.status}`} appointmentId={selectedAppointment.id} />}
               {!canEditConsultation && !isReadOnly && <p className="doctor-locked-note">Consultation notes become available after this visit is started.</p>}
               {canEditConsultation && <form className="doctor-consultation-form" onSubmit={(event) => saveConsultation(event, false)}>
                 <label htmlFor="consultation-note">Consultation note<textarea id="consultation-note" rows={7} maxLength={10_000} required disabled={isReadOnly} value={note} onChange={(event) => setNote(event.target.value)} placeholder="Record the patient's concerns, examination findings, and plan. Do not enter automated diagnoses." /></label>
