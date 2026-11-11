@@ -1,7 +1,6 @@
 "use client";
 
 import { createBrowserClient } from "@supabase/ssr";
-import { useRouter } from "next/navigation";
 import { FormEvent, useState } from "react";
 
 type DemoCredentials = {
@@ -11,7 +10,6 @@ type DemoCredentials = {
 };
 
 export default function SignInForm({ demoCredentials }: { demoCredentials: DemoCredentials | null }) {
-  const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [passwordError, setPasswordError] = useState("");
@@ -42,7 +40,9 @@ export default function SignInForm({ demoCredentials }: { demoCredentials: DemoC
       if (signInError) {
         setPasswordError("Unable to sign in. Check the email and password, then try again.");
       } else {
-        router.replace("/");
+        // A full page load, so the workspace is always rendered for the account that just signed in
+        // (a client-side navigation could reuse a page rendered for the previous account).
+        window.location.replace("/");
       }
     } catch (signInError) {
       console.error("Unable to sign in with Supabase", signInError);

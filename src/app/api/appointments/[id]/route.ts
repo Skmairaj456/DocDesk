@@ -169,7 +169,12 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       nextStatus !== AppointmentStatus.CANCELLED &&
       nextStatus !== AppointmentStatus.NO_SHOW
     ) {
-      return Response.json({ error: "Only the assigned doctor can start or complete a visit." }, { status: 403 });
+      // Usually means this browser's sign-in changed (e.g. reception signed in in another tab) while a
+      // doctor screen was still open, so say which account the request really came from.
+      const who = await withClinic(context, (tx) => tx.user.findUnique({ where: { id: context.userId }, select: { displayName: true } }));
+      return Response.json({
+        error: `Only the assigned doctor can start or complete a visit. This browser is signed in as ${who?.displayName ?? "another user"} (${context.role.toLowerCase()}). Reload the page, or sign in as the doctor.`,
+      }, { status: 403 });
     }
     const result = await withClinic(context, async (tx) => {
       const appointment = await tx.appointment.findFirst({
