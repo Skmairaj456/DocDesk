@@ -2,11 +2,11 @@
 
 import type { AppointmentStatus as AppointmentStatusType, ClinicRole as ClinicRoleType } from "@prisma/client";
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import { localDateTimeAsUtc } from "@/lib/booking-time.mjs";
 import InboxPanel from "@/components/inbox-panel";
 import RecentBookings, { bookingDay } from "@/components/recent-bookings";
 import AppointmentList from "@/components/appointment-list";
 import PatientProfile, { type PatientProfileData } from "@/components/patient-profile";
+import SlotPicker, { type FreeSlot } from "@/components/slot-picker";
 
 const AppointmentStatus = {
   BOOKED: "BOOKED",
@@ -87,7 +87,8 @@ export default function LiveClinicWorkspace(initialData: LiveWorkspaceData) {
   const [selectedDepartment, setSelectedDepartment] = useState(initialData.departments[0]?.id ?? "");
   const [selectedDoctor, setSelectedDoctor] = useState(initialData.doctors[0]?.id ?? "");
   const [visitDate, setVisitDate] = useState(initialData.localDate);
-  const [visitTime, setVisitTime] = useState("12:00");
+  const [visitSlot, setVisitSlot] = useState<FreeSlot | null>(null);
+  const [slotRefresh, setSlotRefresh] = useState(0);
   const [visitType, setVisitType] = useState("CONSULTATION");
 
   const visiblePatients = useMemo(() => {
@@ -131,7 +132,9 @@ export default function LiveClinicWorkspace(initialData: LiveWorkspaceData) {
     );
   }, [appointments, statusFilter, doctorFilter, apptSearch]);
   const availableDoctors = initialData.doctors.filter((doctor) => doctor.departmentIds.includes(selectedDepartment));
-  const selectedDoctorInfo = availableDoctors.find((doctor) => doctor.id === selectedDoctor);
+  // The doctor dropdown shows the department's first doctor whenever the stored choice isn't in that
+  // department (e.g. on first open), so book the doctor that is actually shown.
+  const selectedDoctorInfo = availableDoctors.find((doctor) => doctor.id === selectedDoctor) ?? availableDoctors[0];
 
   function showMessage(text: string) {
     setMessage(text);
@@ -220,18 +223,22 @@ export default function LiveClinicWorkspace(initialData: LiveWorkspaceData) {
       setError("Choose a doctor who is assigned to this department.");
       return;
     }
+    if (!visitSlot) {
+      setError("Choose one of the free times.");
+      return;
+    }
     setSaving(true);
     setError("");
     try {
-      const startsAt = localDateTimeAsUtc(visitDate, visitTime, initialData.timezone);
-      const endsAt = new Date(startsAt.valueOf() + selectedDoctorInfo.consultationMinutes * 60_000);
+      const startsAt = new Date(visitSlot.startsAt);
+      const endsAt = new Date(visitSlot.endsAt);
       const response = await fetch("/api/appointments", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           patientId: selectedPatient,
           departmentId: selectedDepartment,
-          doctorId: selectedDoctor,
+          doctorId: selectedDoctorInfo.id,
           startsAt: startsAt.toISOString(),
           endsAt: endsAt.toISOString(),
           visitType,
@@ -241,9 +248,13 @@ export default function LiveClinicWorkspace(initialData: LiveWorkspaceData) {
       if (!response.ok) throw new Error(result.error ?? "Unable to book appointment.");
       await refreshAppointments(visitDate);
       setShowBookingForm(false);
+      setVisitSlot(null);
+      setSlotRefresh((current) => current + 1);
       showMessage(`Appointment booked · ${result.appointment.reference}`);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Unable to book appointment.");
+      // The time may have just been taken by someone else; show what is free now.
+      setSlotRefresh((current) => current + 1);
     } finally {
       setSaving(false);
     }
@@ -302,11 +313,11 @@ export default function LiveClinicWorkspace(initialData: LiveWorkspaceData) {
         {showBookingForm && <form className="live-form" onSubmit={submitAppointment}><h2>Book appointment</h2><div className="live-form-grid live-booking-grid">
           <label>Patient<select required value={selectedPatient} onChange={(event) => setSelectedPatient(event.target.value)}>{patients.map((patient) => <option key={patient.id} value={patient.id}>{patient.fullName} · {patient.phone}</option>)}</select></label>
           <label>Department<select required value={selectedDepartment} onChange={(event) => { const departmentId = event.target.value; setSelectedDepartment(departmentId); setSelectedDoctor(initialData.doctors.find((doctor) => doctor.departmentIds.includes(departmentId))?.id ?? ""); }}>{initialData.departments.map((department) => <option key={department.id} value={department.id}>{department.name}</option>)}</select></label>
-          <label>Doctor<select required value={selectedDoctor} onChange={(event) => setSelectedDoctor(event.target.value)}>{availableDoctors.map((doctor) => <option key={doctor.id} value={doctor.id}>{doctor.name}</option>)}</select></label>
+          <label>Doctor<select required value={selectedDoctorInfo?.id ?? ""} onChange={(event) => setSelectedDoctor(event.target.value)}>{availableDoctors.map((doctor) => <option key={doctor.id} value={doctor.id}>{doctor.name}</option>)}</select></label>
           <label>Date<input required type="date" min={initialData.localDate} value={visitDate} onChange={(event) => setVisitDate(event.target.value)} /></label>
-          <label>Time<input required type="time" value={visitTime} onChange={(event) => setVisitTime(event.target.value)} /></label>
           <label>Visit type<select value={visitType} onChange={(event) => setVisitType(event.target.value)}><option value="CONSULTATION">Consultation</option><option value="FOLLOW_UP">Follow-up</option><option value="REVISION">Revision</option><option value="WALK_IN">Walk-in</option></select></label>
-        </div><p className="live-form-help">Availability and competing reservations are checked on the server. If another staff member books this time first, choose a different slot.</p><div className="live-form-actions"><button className="button button-quiet" type="button" onClick={() => setShowBookingForm(false)}>Cancel</button><button className="button button-primary" disabled={saving || !patients.length || !availableDoctors.length}>{saving ? "Booking…" : "Confirm appointment"}</button></div></form>}
+          {selectedDoctorInfo && <SlotPicker doctorId={selectedDoctorInfo.id} departmentId={selectedDepartment} date={visitDate} timezone={initialData.timezone} value={visitSlot} onChange={setVisitSlot} refreshKey={slotRefresh} />}
+        </div><p className="live-form-help">Only free times are shown. If another staff member books the same time first, the list refreshes so you can pick again.</p><div className="live-form-actions"><button className="button button-quiet" type="button" onClick={() => setShowBookingForm(false)}>Cancel</button><button className="button button-primary" disabled={saving || !patients.length || !availableDoctors.length || !visitSlot}>{saving ? "Booking…" : "Confirm appointment"}</button></div></form>}
         <div className="reception-metrics" aria-label="Day summary">
           <article className="metric-blue"><span>Visits</span><strong>{counts.total}</strong><small>{counts.booked} yet to arrive</small></article>
           <article className="metric-amber"><span>Waiting</span><strong>{counts.waiting}</strong><small>Checked in</small></article>
