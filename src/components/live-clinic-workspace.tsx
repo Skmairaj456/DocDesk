@@ -7,6 +7,7 @@ import RecentBookings, { bookingDay } from "@/components/recent-bookings";
 import AppointmentList from "@/components/appointment-list";
 import PatientProfile, { type PatientProfileData } from "@/components/patient-profile";
 import SlotPicker, { type FreeSlot } from "@/components/slot-picker";
+import ArrivalPrompt from "@/components/arrival-prompt";
 
 const AppointmentStatus = {
   BOOKED: "BOOKED",
@@ -14,6 +15,7 @@ const AppointmentStatus = {
   IN_CONSULTATION: "IN_CONSULTATION",
   COMPLETED: "COMPLETED",
   CANCELLED: "CANCELLED",
+  NO_SHOW: "NO_SHOW",
 } as const;
 const ClinicRole = { DOCTOR: "DOCTOR" } as const;
 
@@ -113,14 +115,15 @@ export default function LiveClinicWorkspace(initialData: LiveWorkspaceData) {
     return () => window.clearTimeout(timer);
   }, [search]);
   const counts = useMemo(() => {
-    const live = appointments.filter((entry) => entry.status !== AppointmentStatus.CANCELLED);
+    const live = appointments.filter((entry) => entry.status !== AppointmentStatus.CANCELLED && entry.status !== AppointmentStatus.NO_SHOW);
     return {
       total: live.length,
       waiting: live.filter((entry) => entry.status === AppointmentStatus.ARRIVED).length,
       inConsultation: live.filter((entry) => entry.status === AppointmentStatus.IN_CONSULTATION).length,
       completed: live.filter((entry) => entry.status === AppointmentStatus.COMPLETED).length,
       booked: live.filter((entry) => entry.status === AppointmentStatus.BOOKED).length,
-      cancelled: appointments.length - live.length,
+      cancelled: appointments.filter((entry) => entry.status === AppointmentStatus.CANCELLED).length,
+      noShow: appointments.filter((entry) => entry.status === AppointmentStatus.NO_SHOW).length,
     };
   }, [appointments]);
   const visibleAppointments = useMemo(() => {
@@ -287,9 +290,7 @@ export default function LiveClinicWorkspace(initialData: LiveWorkspaceData) {
       }
       return null;
     }
-    if (appointment.status === AppointmentStatus.BOOKED) {
-      return { label: "Check in", status: AppointmentStatus.ARRIVED };
-    }
+    // Booked visits get the "Patient came?" Yes/No prompt instead of a single action.
     return null;
   }
 
@@ -323,7 +324,7 @@ export default function LiveClinicWorkspace(initialData: LiveWorkspaceData) {
           <article className="metric-amber"><span>Waiting</span><strong>{counts.waiting}</strong><small>Checked in</small></article>
           <article className="metric-purple"><span>In consultation</span><strong>{counts.inConsultation}</strong><small>With a doctor</small></article>
           <article className="metric-green"><span>Completed</span><strong>{counts.completed}</strong><small>Visits done</small></article>
-          <article className="metric-slate"><span>Cancelled</span><strong>{counts.cancelled}</strong><small>Slots released</small></article>
+          <article className="metric-slate"><span>Cancelled</span><strong>{counts.cancelled}</strong><small>{counts.noShow > 0 ? `+ ${counts.noShow} no-show${counts.noShow === 1 ? "" : "s"}` : "Slots released"}</small></article>
         </div>
         <RecentBookings
           timezone={initialData.timezone}
@@ -338,8 +339,8 @@ export default function LiveClinicWorkspace(initialData: LiveWorkspaceData) {
         />
         <div className="live-tabs" role="tablist" aria-label="Clinic sections"><button role="tab" aria-selected={view === "appointments"} className={view === "appointments" ? "selected" : ""} onClick={() => setView("appointments")}>Day schedule <span>{appointments.length}</span></button><button role="tab" aria-selected={view === "all"} className={view === "all" ? "selected" : ""} onClick={() => setView("all")}>All appointments</button><button role="tab" aria-selected={view === "patients"} className={view === "patients" ? "selected" : ""} onClick={() => setView("patients")}>Patients <span>{patients.length}</span></button><button role="tab" aria-selected={view === "whatsapp"} className={view === "whatsapp" ? "selected" : ""} onClick={() => setView("whatsapp")}>WhatsApp</button></div>
         {view === "appointments" && <section className="live-panel"><div className="live-panel-heading"><div><h2>{selectedDate === initialData.localDate ? "Today’s appointments" : "Appointments"}</h2><p>{formatAppointmentDate(`${selectedDate}T12:00:00`, initialData.timezone)} · {appointments.length} visits</p></div><div className="reception-day-nav"><button type="button" aria-label="Previous day" onClick={() => shiftDay(-1)}>‹</button><button type="button" disabled={selectedDate === initialData.localDate} onClick={() => refreshAppointments(initialData.localDate).catch((caught: unknown) => setError(caught instanceof Error ? caught.message : "Unable to load the schedule."))}>Today</button><button type="button" aria-label="Next day" onClick={() => shiftDay(1)}>›</button><label className="live-search"><input type="date" aria-label="Schedule date" value={selectedDate} onChange={(event) => event.target.value && refreshAppointments(event.target.value).catch((caught: unknown) => setError(caught instanceof Error ? caught.message : "Unable to load the schedule."))} /></label></div></div>
-          <div className="reception-filters"><div className="reception-chips" role="group" aria-label="Filter by status">{([["all", "All"], [AppointmentStatus.BOOKED, "Booked"], [AppointmentStatus.ARRIVED, "Waiting"], [AppointmentStatus.IN_CONSULTATION, "In consultation"], [AppointmentStatus.COMPLETED, "Completed"], [AppointmentStatus.CANCELLED, "Cancelled"]] as const).map(([value, label]) => <button key={value} type="button" className={statusFilter === value ? "selected" : ""} onClick={() => setStatusFilter(value)}>{label}</button>)}</div><select aria-label="Filter by doctor" value={doctorFilter} onChange={(event) => setDoctorFilter(event.target.value)}><option value="all">All doctors</option>{initialData.doctors.map((doctor) => <option key={doctor.id} value={doctor.name}>{doctor.name}</option>)}</select><input className="live-search-input" placeholder="Search patient or reference" value={apptSearch} onChange={(event) => setApptSearch(event.target.value)} /></div>
-          {visibleAppointments.length === 0 ? <p className="live-empty">{appointments.length === 0 ? "No appointments for this day." : "No appointments match these filters."}</p> : <div className="live-table-wrap"><table className="live-table"><thead><tr><th>Time</th><th>Patient</th><th>Doctor</th><th>Department</th><th>Visit</th><th>Status</th><th /></tr></thead><tbody>{visibleAppointments.map((appointment) => { const action = nextAction(appointment); const cancellable = initialData.role !== ClinicRole.DOCTOR && (appointment.status === AppointmentStatus.BOOKED || appointment.status === AppointmentStatus.ARRIVED); return <tr key={appointment.id}><td>{formatAppointmentTime(appointment.startsAt, initialData.timezone)}</td><td><button type="button" className="patient-link" onClick={() => setProfilePatientId(appointment.patient.id)}>{appointment.patient.fullName}</button><small>{appointment.reference}</small></td><td>{appointment.doctor.membership.user.displayName}</td><td>{appointment.department.name}</td><td>{appointment.visitType.replaceAll("_", " ").toLowerCase()}</td><td><span className={`live-status ${appointment.status.toLowerCase().replaceAll("_", "-")}`}>{appointmentStatusLabel(appointment.status)}</span></td><td className="reception-actions">{action && <button className="button button-outline button-small" onClick={() => updateAppointment(appointment, action.status)}>{action.label}</button>}{cancellable && <button className="button button-quiet button-small reception-cancel" onClick={() => cancelAppointment(appointment)}>Cancel</button>}</td></tr>; })}</tbody></table></div>}
+          <div className="reception-filters"><div className="reception-chips" role="group" aria-label="Filter by status">{([["all", "All"], [AppointmentStatus.BOOKED, "Booked"], [AppointmentStatus.ARRIVED, "Waiting"], [AppointmentStatus.IN_CONSULTATION, "In consultation"], [AppointmentStatus.COMPLETED, "Completed"], [AppointmentStatus.CANCELLED, "Cancelled"], [AppointmentStatus.NO_SHOW, "No-show"]] as const).map(([value, label]) => <button key={value} type="button" className={statusFilter === value ? "selected" : ""} onClick={() => setStatusFilter(value)}>{label}</button>)}</div><select aria-label="Filter by doctor" value={doctorFilter} onChange={(event) => setDoctorFilter(event.target.value)}><option value="all">All doctors</option>{initialData.doctors.map((doctor) => <option key={doctor.id} value={doctor.name}>{doctor.name}</option>)}</select><input className="live-search-input" placeholder="Search patient or reference" value={apptSearch} onChange={(event) => setApptSearch(event.target.value)} /></div>
+          {visibleAppointments.length === 0 ? <p className="live-empty">{appointments.length === 0 ? "No appointments for this day." : "No appointments match these filters."}</p> : <div className="live-table-wrap"><table className="live-table"><thead><tr><th>Time</th><th>Patient</th><th>Doctor</th><th>Department</th><th>Visit</th><th>Status</th><th /></tr></thead><tbody>{visibleAppointments.map((appointment) => { const action = nextAction(appointment); const cancellable = initialData.role !== ClinicRole.DOCTOR && (appointment.status === AppointmentStatus.BOOKED || appointment.status === AppointmentStatus.ARRIVED); return <tr key={appointment.id}><td>{formatAppointmentTime(appointment.startsAt, initialData.timezone)}</td><td><button type="button" className="patient-link" onClick={() => setProfilePatientId(appointment.patient.id)}>{appointment.patient.fullName}</button><small>{appointment.reference}</small></td><td>{appointment.doctor.membership.user.displayName}</td><td>{appointment.department.name}</td><td>{appointment.visitType.replaceAll("_", " ").toLowerCase()}</td><td><span className={`live-status ${appointment.status.toLowerCase().replaceAll("_", "-")}`}>{appointmentStatusLabel(appointment.status)}</span></td><td className="reception-actions">{initialData.role !== ClinicRole.DOCTOR && appointment.status === AppointmentStatus.BOOKED && <ArrivalPrompt startsAt={appointment.startsAt} patientName={appointment.patient.fullName} canCheckIn={selectedDate === initialData.localDate} onArrived={() => updateAppointment(appointment, AppointmentStatus.ARRIVED)} onNoShow={() => updateAppointment(appointment, AppointmentStatus.NO_SHOW)} />}{action && <button className="button button-outline button-small" onClick={() => updateAppointment(appointment, action.status)}>{action.label}</button>}{cancellable && <button className="button button-quiet button-small reception-cancel" onClick={() => cancelAppointment(appointment)}>Cancel</button>}</td></tr>; })}</tbody></table></div>}
         </section>}
         {view === "all" && <AppointmentList timezone={initialData.timezone} today={initialData.localDate} doctors={initialData.doctors} onOpenPatient={setProfilePatientId} onMessage={showMessage} />}
         {view === "whatsapp" && <InboxPanel timezone={initialData.timezone} />}

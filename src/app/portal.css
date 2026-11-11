@@ -347,3 +347,14 @@
   .slot-picker { padding: 12px; }
   .slot-picker-times button { flex: 1 0 calc(33% - 8px); min-width: 0; }
 }
+
+/* Reception: "Patient came?" Yes/No and the no-show status. */
+.arrival-prompt { align-items: center; display: inline-flex; flex-wrap: wrap; gap: 6px; }
+.arrival-prompt-label { color: #637084; font-size: 12px; margin-right: 2px; white-space: nowrap; }
+.arrival-prompt .button { min-width: 48px; }
+.arrival-yes { background: #e0f5ec; border: 1px solid #b7e3cf; color: #1d855a; }
+.arrival-yes:hover { background: #c9eedd; }
+.arrival-no { background: #fff0ef; border: 1px solid #f2cbc7; color: #a33a2f; }
+.arrival-no:hover:not(:disabled) { background: #fde0dd; }
+.arrival-no:disabled { background: #f6f7f9; border-color: #e4e8ee; color: #a8b1be; cursor: not-allowed; }
+.live-status.no-show, .doctor-status.no-show { background: #f1f2f5; color: #6b7585; }

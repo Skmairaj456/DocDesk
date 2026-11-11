@@ -5,7 +5,7 @@ import { withClinic } from "@/lib/tenant-db";
 import { localScheduleTime } from "@/lib/booking-time.mjs";
 
 const updateInput = z.object({
-  status: z.enum(["ARRIVED", "IN_CONSULTATION", "COMPLETED", "CANCELLED"]),
+  status: z.enum(["ARRIVED", "IN_CONSULTATION", "COMPLETED", "CANCELLED", "NO_SHOW"]),
   cancelReason: z.string().trim().max(250).optional(),
 });
 const rescheduleInput = z.object({
@@ -16,11 +16,12 @@ const rescheduleInput = z.object({
 const cancelInput = z.object({ reason: z.string().trim().max(250).optional() });
 
 const allowedTransitions: Record<AppointmentStatus, AppointmentStatus[]> = {
-  BOOKED: [AppointmentStatus.ARRIVED, AppointmentStatus.CANCELLED],
+  BOOKED: [AppointmentStatus.ARRIVED, AppointmentStatus.CANCELLED, AppointmentStatus.NO_SHOW],
   ARRIVED: [AppointmentStatus.IN_CONSULTATION, AppointmentStatus.CANCELLED],
   IN_CONSULTATION: [],
   COMPLETED: [],
   CANCELLED: [],
+  NO_SHOW: [],
 };
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -76,6 +77,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
           localEnd = localScheduleTime(endsAt, clinic.timezone);
         } catch {
           return { error: "The clinic timezone is not configured correctly." as const, status: 500 };
+          
         }
         const hasWorkingHours = doctor.availability.some((slot) =>
           slot.weekday === localStart.weekday &&
@@ -164,7 +166,8 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     if (
       context.role !== ClinicRole.DOCTOR &&
       nextStatus !== AppointmentStatus.ARRIVED &&
-      nextStatus !== AppointmentStatus.CANCELLED
+      nextStatus !== AppointmentStatus.CANCELLED &&
+      nextStatus !== AppointmentStatus.NO_SHOW
     ) {
       return Response.json({ error: "Only the assigned doctor can start or complete a visit." }, { status: 403 });
     }
@@ -175,11 +178,14 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
           clinicId: context.clinicId,
           ...(context.doctorProfileId ? { doctorId: context.doctorProfileId } : {}),
         },
-        select: { id: true, status: true },
+        select: { id: true, status: true, startsAt: true },
       });
       if (!appointment) return { error: "Appointment not found." as const, status: 404 };
       if (!allowedTransitions[appointment.status].includes(nextStatus)) {
         return { error: `Cannot change ${appointment.status} to ${nextStatus}.` as const, status: 409 };
+      }
+      if (nextStatus === AppointmentStatus.NO_SHOW && appointment.startsAt > new Date()) {
+        return { error: "A patient can be marked as not arrived only once the appointment time has started." as const, status: 409 };
       }
       const updated = await tx.appointment.update({
         where: { id: appointment.id },
@@ -192,7 +198,8 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
         },
         select: { id: true, status: true, checkedInAt: true, cancelledAt: true },
       });
-      if (nextStatus === AppointmentStatus.CANCELLED) {
+      if (nextStatus === AppointmentStatus.CANCELLED || nextStatus === AppointmentStatus.NO_SHOW) {
+        // Free the doctor's time so it can be offered again.
         await tx.scheduleBlock.deleteMany({ where: { appointmentId: appointment.id } });
       }
       await tx.auditLog.create({

@@ -1,13 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import ArrivalPrompt from "@/components/arrival-prompt";
 
 type Range = "upcoming" | "week" | "past" | "custom";
 type ListAppointment = {
   id: string;
   reference: string;
   startsAt: string;
-  status: "BOOKED" | "ARRIVED" | "IN_CONSULTATION" | "COMPLETED" | "CANCELLED";
+  status: "BOOKED" | "ARRIVED" | "IN_CONSULTATION" | "COMPLETED" | "CANCELLED" | "NO_SHOW";
   visitType: string;
   source: "RECEPTION" | "DOCTOR" | "WHATSAPP";
   patient: { id: string; fullName: string; phone: string };
@@ -16,7 +17,7 @@ type ListAppointment = {
 };
 
 const ranges: Array<[Range, string]> = [["upcoming", "Upcoming"], ["week", "Next 7 days"], ["past", "Past"], ["custom", "Date range"]];
-const statuses: Array<[string, string]> = [["", "Any status"], ["BOOKED", "Booked"], ["ARRIVED", "Waiting"], ["IN_CONSULTATION", "In consultation"], ["COMPLETED", "Completed"], ["CANCELLED", "Cancelled"]];
+const statuses: Array<[string, string]> = [["", "Any status"], ["BOOKED", "Booked"], ["ARRIVED", "Waiting"], ["IN_CONSULTATION", "In consultation"], ["COMPLETED", "Completed"], ["CANCELLED", "Cancelled"], ["NO_SHOW", "No-show"]];
 const sources: Array<[string, string]> = [["", "Any source"], ["WHATSAPP", "WhatsApp"], ["RECEPTION", "Reception"], ["DOCTOR", "Doctor"]];
 const sourceLabels: Record<ListAppointment["source"], string> = { WHATSAPP: "WhatsApp", RECEPTION: "Reception", DOCTOR: "Doctor" };
 
@@ -91,7 +92,7 @@ export default function AppointmentList({
     return () => window.clearTimeout(first);
   }, [load]);
 
-  async function changeStatus(appointment: ListAppointment, next: "ARRIVED" | "CANCELLED") {
+  async function changeStatus(appointment: ListAppointment, next: "ARRIVED" | "CANCELLED" | "NO_SHOW") {
     if (next === "CANCELLED" && !window.confirm(`Cancel ${appointment.patient.fullName}'s appointment (${appointment.reference})? The slot will be released.`)) return;
     try {
       const response = await fetch(`/api/appointments/${appointment.id}`, {
@@ -102,7 +103,7 @@ export default function AppointmentList({
       const result = await response.json();
       if (!response.ok) throw new Error(result.error ?? "Unable to update appointment.");
       setRows((current) => current.map((row) => row.id === appointment.id ? { ...row, status: result.appointment.status } : row));
-      onMessage(`${next === "ARRIVED" ? "Checked in" : "Cancelled"} · ${appointment.patient.fullName}`);
+      onMessage(`${next === "ARRIVED" ? "Checked in" : next === "NO_SHOW" ? "Marked as no-show" : "Cancelled"} · ${appointment.patient.fullName}`);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Unable to update appointment.");
     }
@@ -152,7 +153,7 @@ export default function AppointmentList({
                     <td><span className={`recent-booking-source ${appointment.source.toLowerCase()}`}>{sourceLabels[appointment.source]}</span></td>
                     <td><span className={`live-status ${appointment.status.toLowerCase().replaceAll("_", "-")}`}>{statusLabel(appointment.status)}</span></td>
                     <td className="reception-actions">
-                      {appointment.status === "BOOKED" && isToday && <button className="button button-outline button-small" onClick={() => changeStatus(appointment, "ARRIVED")}>Check in</button>}
+                      {appointment.status === "BOOKED" && <ArrivalPrompt startsAt={appointment.startsAt} patientName={appointment.patient.fullName} canCheckIn={isToday} onArrived={() => changeStatus(appointment, "ARRIVED")} onNoShow={() => changeStatus(appointment, "NO_SHOW")} />}
                       {cancellable && <button className="button button-quiet button-small reception-cancel" onClick={() => changeStatus(appointment, "CANCELLED")}>Cancel</button>}
                     </td>
                   </tr>

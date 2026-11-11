@@ -594,7 +594,9 @@ export default function DoctorWorkspace(initialData: LiveWorkspaceData) {
                         ? <button disabled={busy} className="button button-primary" onClick={() => openConsultation(appointment)}>Open consultation</button>
                         : appointment.status === "COMPLETED"
                           ? <button disabled={busy} className="button button-outline" onClick={() => openConsultation(appointment)}>Review record</button>
-                          : <span className="doctor-awaiting">Awaiting patient check-in</span>;
+                          : appointment.status === "NO_SHOW"
+                            ? <span className="doctor-awaiting">Patient did not arrive</span>
+                            : <span className="doctor-awaiting">Awaiting patient check-in</span>;
                     return (
                       <article className="doctor-queue-row" key={appointment.id}>
                         <time className="doctor-visit-time">{formatTime(appointment.startsAt, initialData.timezone)}<small>{formatDate(appointment.startsAt, initialData.timezone)}</small></time>
