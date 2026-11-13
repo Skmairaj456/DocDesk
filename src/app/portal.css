@@ -144,6 +144,8 @@
 .doctor-history article strong { font-size: 12px; }
 .doctor-history article p { font-size: 14px; }
 .doctor-history article > small { font-size: 12px; }
+.assessment-summary dt { font-size: 12px; }
+.assessment-summary dd, .assessment-summary summary { font-size: 14px; }
 .doctor-consultation-form > label, .doctor-outcome-control, .doctor-followup-fields label, .doctor-booking-form label { font-size: 13px; }
 .doctor-consultation-form textarea, .doctor-outcome-control select, .doctor-followup-fields input, .doctor-followup-fields select, .doctor-booking-form input { border-radius: 10px; font-size: 14px; padding: 11px 12px; }
 .doctor-checkbox { font-size: 14px; }

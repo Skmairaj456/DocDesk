@@ -583,6 +583,13 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .doctor-history article strong { color: #58677d; font-size: 8px; }
 .doctor-history article p { color: #79869a; font-size: 9px; line-height: 1.6; margin: 6px 0; white-space: pre-wrap; }
 .doctor-history article > small { color: #9a895d; font-size: 8px; }
+.assessment-summary { margin: 6px 0; }
+.assessment-summary dl { display: grid; gap: 6px; margin: 0; }
+.assessment-summary dt { color: #8b97a7; font-size: 8px; }
+.assessment-summary dd { color: #45546a; font-size: 9px; line-height: 1.5; margin: 2px 0 0; overflow-wrap: anywhere; white-space: pre-wrap; }
+.assessment-summary details { margin-top: 6px; }
+.assessment-summary summary { color: #3f6fb5; cursor: pointer; font-size: 9px; }
+.assessment-summary details dl { margin-top: 6px; }
 .doctor-consultation-form { display: flex; flex-direction: column; gap: 11px; }
 .doctor-consultation-form > label, .doctor-outcome-control, .doctor-followup-fields label, .doctor-booking-form label { color: #647187; display: flex; flex-direction: column; font-size: 9px; gap: 6px; }
 .doctor-consultation-form textarea, .doctor-outcome-control select, .doctor-followup-fields input, .doctor-followup-fields select, .doctor-booking-form input { background: #fff; border: 1px solid #dfe5ed; border-radius: 5px; color: #43536a; font: inherit; font-size: 10px; padding: 9px; width: 100%; }

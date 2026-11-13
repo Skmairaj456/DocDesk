@@ -68,6 +68,30 @@ export async function loadAssessment(tx: Tx, scope: Scope) {
   return { ok: true as const, assessment: row ? toRecord(row) : null, editable: isEditable(visit) };
 }
 
+export type AssessmentHistoryEntry = ClinicalAssessmentRecord & { appointmentId: string; visitStartsAt: string; doctorName: string };
+
+// Earlier assessments of a patient for the care history in the consultation drawer. Like the
+// consultation notes shown there, it covers every visit of the patient in this clinic; the
+// current visit is left out because its own assessment section is shown beside it.
+export async function loadAssessmentHistory(tx: Tx, scope: { clinicId: string; patientId: string; excludeAppointmentId: string }) {
+  const rows = await tx.clinicalAssessment.findMany({
+    where: { clinicId: scope.clinicId, patientId: scope.patientId, appointmentId: { not: scope.excludeAppointmentId } },
+    select: {
+      ...assessmentSelect,
+      appointmentId: true,
+      appointment: { select: { startsAt: true } },
+      doctor: { select: { membership: { select: { user: { select: { displayName: true } } } } } },
+    },
+    orderBy: { appointment: { startsAt: "desc" } },
+  });
+  return rows.map(({ appointmentId, appointment, doctor, ...row }): AssessmentHistoryEntry => ({
+    ...toRecord(row),
+    appointmentId,
+    visitStartsAt: appointment.startsAt.toISOString(),
+    doctorName: doctor.membership.user.displayName,
+  }));
+}
+
 export async function saveAssessment(
   tx: Tx,
   input: Scope & { userId: string | null; values: ClinicalAssessmentValues; expectedUpdatedAt: string | null },

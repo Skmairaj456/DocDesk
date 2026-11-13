@@ -1,6 +1,7 @@
 import { AppointmentStatus, ClinicRole, FollowUpStatus, FollowUpType, Prisma, VisitOutcome } from "@prisma/client";
 import { z } from "zod";
 import { AuthenticationError, requireClinicUser } from "@/lib/auth";
+import { loadAssessmentHistory } from "@/lib/clinical-assessment-service";
 import { withClinic } from "@/lib/tenant-db";
 
 const consultationInput = z.object({
@@ -45,6 +46,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
                 where: { clinicId: context.clinicId },
                 select: {
                   id: true,
+                  appointmentId: true,
                   note: true,
                   outcome: true,
                   completedAt: true,
@@ -79,7 +81,9 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
           },
         },
       });
-      return appointment;
+      if (!appointment) return null;
+      const assessments = await loadAssessmentHistory(tx, { clinicId: context.clinicId, patientId: appointment.patient.id, excludeAppointmentId: appointment.id });
+      return { ...appointment, assessments };
     });
     if (!details) return Response.json({ error: "Appointment not found." }, { status: 404 });
     return Response.json({
@@ -106,6 +110,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
             dueAt: consultation.followUp.dueAt.toISOString(),
           } : null,
         })),
+        assessments: details.assessments,
       },
       consultation: details.consultation ? {
         ...details.consultation,

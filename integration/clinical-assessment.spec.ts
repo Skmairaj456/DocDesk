@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 import { prisma } from "@/lib/prisma";
 import { withWorker } from "@/lib/tenant-db";
 import { clinicalAssessmentSchema, emptyAssessment, type ClinicalAssessmentValues } from "@/lib/clinical-assessment";
-import { loadAssessment, saveAssessment } from "@/lib/clinical-assessment-service";
+import { loadAssessment, loadAssessmentHistory, saveAssessment } from "@/lib/clinical-assessment-service";
 
 const run = randomUUID().slice(0, 8);
 let clinicId = "";
@@ -128,6 +128,26 @@ describe("Clinical assessment (real PostgreSQL)", () => {
     assert.equal(!locked.ok && locked.status, 409);
     const consultation = await prisma.consultation.findUniqueOrThrow({ where: { appointmentId: visit.id } });
     assert.equal(consultation.note, "Seen", "the consultation note is untouched");
+  });
+
+  it("lists a patient's earlier assessments for the care history, newest visit first", async () => {
+    const earlier = await makeVisit();
+    const later = await makeVisit();
+    const current = await makeVisit();
+    assert.ok((await save(earlier.id, values({ provisionalDiagnosis: "Acute gastritis" }), null)).ok);
+    assert.ok((await save(later.id, values({ provisionalDiagnosis: "Viral fever", bpSystolic: 120, bpDiastolic: 80 }), null)).ok);
+    assert.ok((await save(current.id, values({ provisionalDiagnosis: "Today" }), null)).ok);
+
+    const history = await withWorker((tx) => loadAssessmentHistory(tx, { clinicId, patientId, excludeAppointmentId: current.id }));
+    const mine = history.filter((entry) => [earlier.id, later.id, current.id].includes(entry.appointmentId));
+    assert.deepEqual(mine.map((entry) => entry.provisionalDiagnosis), ["Viral fever", "Acute gastritis"], "current visit excluded, newest first");
+    assert.equal(mine[0].bpSystolic, 120);
+    assert.equal(mine[0].doctorName, "Dr. Assess");
+    assert.equal(mine[0].visitStartsAt, later.startsAt.toISOString());
+
+    const otherClinic = await prisma.clinic.create({ data: { name: `History Clinic ${run}`, timezone: "Asia/Kolkata" } });
+    const elsewhere = await withWorker((tx) => loadAssessmentHistory(tx, { clinicId: otherClinic.id, patientId, excludeAppointmentId: current.id }));
+    assert.equal(elsewhere.length, 0, "another clinic sees none of them");
   });
 
   it("keeps an assessment inside its own clinic", async () => {

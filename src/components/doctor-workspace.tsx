@@ -3,10 +3,12 @@
 import type { VisitOutcome } from "@prisma/client";
 import Link from "next/link";
 import { FormEvent, useEffect, useMemo, useState } from "react";
+import AssessmentSummary from "@/components/assessment-summary";
 import ClinicalAssessment from "@/components/clinical-assessment";
 import type { LiveWorkspaceData } from "@/components/live-clinic-workspace";
 import RecentBookings, { bookingDay } from "@/components/recent-bookings";
 import { localDateTimeAsUtc } from "@/lib/booking-time.mjs";
+import type { AssessmentHistoryEntry } from "@/lib/clinical-assessment-service";
 
 type Appointment = LiveWorkspaceData["appointments"][number];
 type ConsultationData = {
@@ -34,12 +36,20 @@ type PatientRecord = {
   }>;
   consultations: Array<{
     id: string;
+    appointmentId: string;
     note: string;
     outcome: VisitOutcome | null;
     createdAt: string;
     completedAt: string | null;
     followUp: { dueAt: string; type: string; status: string; reasonInternal: string } | null;
   }>;
+  assessments: AssessmentHistoryEntry[];
+};
+type CareHistoryEntry = {
+  key: string;
+  date: string;
+  consultation: PatientRecord["consultations"][number] | null;
+  assessment: AssessmentHistoryEntry | null;
 };
 type FollowUp = {
   id: string;
@@ -458,6 +468,23 @@ export default function DoctorWorkspace(initialData: LiveWorkspaceData) {
   const currentPatientName = patientRecord?.fullName ?? selectedAppointment?.patient.fullName ?? "";
   const isReadOnly = selectedAppointment?.status === "COMPLETED" || savedConsultation?.completedAt != null;
   const canEditConsultation = selectedAppointment?.status === "IN_CONSULTATION" && !isReadOnly;
+  // One entry per earlier visit, pairing its consultation note with its clinical assessment.
+  // The open visit is left out: its note and assessment are edited further down the drawer.
+  const careHistory: CareHistoryEntry[] = (() => {
+    if (!patientRecord || !selectedAppointment) return [];
+    const assessmentByVisit = new Map(patientRecord.assessments.map((assessment) => [assessment.appointmentId, assessment]));
+    const entries: CareHistoryEntry[] = patientRecord.consultations
+      .filter((visit) => visit.id !== savedConsultation?.id && visit.appointmentId !== selectedAppointment.id)
+      .map((visit) => {
+        const assessment = assessmentByVisit.get(visit.appointmentId) ?? null;
+        assessmentByVisit.delete(visit.appointmentId);
+        return { key: visit.id, date: assessment?.visitStartsAt ?? visit.createdAt, consultation: visit, assessment };
+      });
+    for (const assessment of assessmentByVisit.values()) {
+      entries.push({ key: assessment.id, date: assessment.visitStartsAt, consultation: null, assessment });
+    }
+    return entries.sort((a, b) => b.date.localeCompare(a.date));
+  })();
 
   return (
     <main className="doctor-app">
@@ -678,8 +705,15 @@ export default function DoctorWorkspace(initialData: LiveWorkspaceData) {
                   <small>{visit.reference}</small>
                 </article>
               ))}</section>}
-              {patientRecord.consultations.length > 0 && <section className="doctor-history"><h3>Clinical notes and care history</h3>{patientRecord.consultations.filter((visit) => visit.id !== savedConsultation?.id).map((visit) => (
-                <article key={visit.id}><div><strong>{formatDate(visit.createdAt, initialData.timezone)}{visit.outcome ? ` · ${outcomeLabels[visit.outcome]}` : " · Draft"}</strong><p>{visit.note}</p></div>{visit.followUp && <small>{visit.followUp.type === "REVISION" ? "Revision" : "Follow-up"} · {formatDate(visit.followUp.dueAt, initialData.timezone)} · {statusLabel(visit.followUp.status)}</small>}</article>
+              {careHistory.length > 0 && <section className="doctor-history"><h3>Clinical notes and care history</h3>{careHistory.map(({ key, date, consultation: visit, assessment }) => (
+                <article key={key}>
+                  <div>
+                    <strong>{formatDate(date, initialData.timezone)}{visit ? (visit.outcome ? ` · ${outcomeLabels[visit.outcome]}` : " · Draft") : ""}{assessment ? ` · ${assessment.doctorName}` : ""}</strong>
+                    {assessment && <AssessmentSummary assessment={assessment} />}
+                    {visit && <p>{visit.note}</p>}
+                  </div>
+                  {visit?.followUp && <small>{visit.followUp.type === "REVISION" ? "Revision" : "Follow-up"} · {formatDate(visit.followUp.dueAt, initialData.timezone)} · {statusLabel(visit.followUp.status)}</small>}
+                </article>
               ))}</section>}
               {(canEditConsultation || isReadOnly) && <ClinicalAssessment key={`${selectedAppointment.id}:${selectedAppointment.status}`} appointmentId={selectedAppointment.id} />}
               {!canEditConsultation && !isReadOnly && <p className="doctor-locked-note">Consultation notes become available after this visit is started.</p>}
