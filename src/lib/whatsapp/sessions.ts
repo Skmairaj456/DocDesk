@@ -1,11 +1,13 @@
-import { localScheduleTime } from "../booking-time.mjs";
+import { clinicLocalDate, localScheduleTime } from "../booking-time.mjs";
 
 // Times of day patients choose between. Bands are by local start time; the hours shown
 // to patients come from the doctors' real availability, not from these bounds.
+// The evening runs on past midnight (to 6 AM next day) so a late window such as 18:00–01:00
+// is shown as one evening session.
 export const SESSIONS = [
   { id: "morning", title: "Morning", icon: "🌅", from: 0, to: 13 * 60 },
   { id: "afternoon", title: "Afternoon", icon: "☀️", from: 13 * 60, to: 18 * 60 },
-  { id: "evening", title: "Evening", icon: "🌙", from: 18 * 60, to: 24 * 60 },
+  { id: "evening", title: "Evening", icon: "🌙", from: 18 * 60, to: 30 * 60 },
 ] as const;
 
 export type SessionId = (typeof SESSIONS)[number]["id"];
@@ -27,6 +29,12 @@ export function sessionOfClock(time: string): SessionId {
 
 export function sessionOfInstant(date: Date, timeZone: string): SessionId {
   return sessionOfClock(localScheduleTime(date, timeZone).time);
+}
+
+// The session a slot is offered in on a given day's list. A slot after midnight on that list
+// comes from the evening window running past midnight, so it stays in the evening.
+export function sessionOfSlot(startsAt: Date, listDate: string, timeZone: string): SessionId {
+  return clinicLocalDate(startsAt, timeZone) === listDate ? sessionOfInstant(startsAt, timeZone) : "evening";
 }
 
 export function isSessionId(value: string | undefined): value is SessionId {
@@ -53,7 +61,12 @@ export function sessionHours(windows: Window[]): Partial<Record<SessionId, strin
   for (const session of SESSIONS) {
     // Clip each window to the session, so one long window (e.g. 09:00–20:00) counts towards every session it covers.
     const parts = windows
-      .map((window) => ({ start: Math.max(toMinutes(window.startsAt), session.from), end: Math.min(toMinutes(window.endsAt), session.to) }))
+      .map((window) => {
+        const start = toMinutes(window.startsAt);
+        const end = toMinutes(window.endsAt);
+        // An end not after the start means the window runs past midnight (18:00–01:00).
+        return { start: Math.max(start, session.from), end: Math.min(end <= start ? end + 24 * 60 : end, session.to) };
+      })
       .filter((part) => part.start < part.end);
     if (parts.length === 0) continue;
     const start = Math.min(...parts.map((part) => part.start));

@@ -22,7 +22,7 @@ import {
   slotsForDate,
   type Tx,
 } from "@/lib/booking-service";
-import { SESSIONS, isSessionId, sessionHours, sessionOfInstant, sessionTitle, type SessionId } from "@/lib/whatsapp/sessions";
+import { SESSIONS, isSessionId, sessionHours, sessionOfSlot, sessionTitle, type SessionId } from "@/lib/whatsapp/sessions";
 import { addDays, firstName, formatClinicDate, formatClinicTime, normalizePhone, parseDateOfBirth, parseName } from "@/lib/whatsapp/text";
 import { weekdayOf } from "@/lib/slots";
 
@@ -228,7 +228,7 @@ async function prompt(c: Ctx, state: S, prefix = ""): Promise<void> {
       const hours = sessionHours(pool.doctors.flatMap((doctor) => doctor.availability).filter((window) => window.weekday === weekday));
       const options: Option[] = [];
       for (const session of SESSIONS) {
-        const count = slots.filter((slot) => sessionOfInstant(slot.startsAt, c.clinic.timezone) === session.id).length;
+        const count = slots.filter((slot) => sessionOfSlot(slot.startsAt, date, c.clinic.timezone) === session.id).length;
         if (count === 0) continue;
         const range = hours[session.id];
         options.push({ id: session.id, title: range ? `${session.title} (${range})` : session.title, description: `${count} time${count === 1 ? "" : "s"} free` });
@@ -245,7 +245,7 @@ async function prompt(c: Ctx, state: S, prefix = ""): Promise<void> {
       const pool = await loadDayPool(c, date);
       const session = c.data.session;
       const slots = slotsForDate(pool, date, c.now)
-        .filter((slot) => !session || sessionOfInstant(slot.startsAt, c.clinic.timezone) === session)
+        .filter((slot) => !session || sessionOfSlot(slot.startsAt, date, c.clinic.timezone) === session)
         .slice(0, 8);
       const label = session ? `${sessionTitle(session).toLowerCase()} ` : "";
       if (slots.length === 0) {
@@ -259,7 +259,8 @@ async function prompt(c: Ctx, state: S, prefix = ""): Promise<void> {
       say(c, `${lead}Free ${label}times on ${formatClinicDate(date, c.clinic.timezone)}:`, [
         ...slots.map((slot) => ({
           id: `${slot.doctorId}|${slot.startsAt.toISOString()}`,
-          title: formatClinicTime(slot.startsAt, c.clinic.timezone),
+          // Evening sessions can run past midnight; say so, since those times are on the next day.
+          title: `${formatClinicTime(slot.startsAt, c.clinic.timezone)}${clinicLocalDate(slot.startsAt, c.clinic.timezone) === date ? "" : " (next day)"}`,
           description: showDoctor ? slot.doctorName : undefined,
         })),
         { id: "other_session", title: "Choose another session" },

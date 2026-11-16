@@ -2,7 +2,7 @@ import { AppointmentStatus, ClinicRole, FollowUpStatus, Prisma } from "@prisma/c
 import { z } from "zod";
 import { AuthenticationError, requireClinicUser } from "@/lib/auth";
 import { withClinic } from "@/lib/tenant-db";
-import { localScheduleTime } from "@/lib/booking-time.mjs";
+import { fitsAvailability } from "@/lib/slots";
 
 const updateInput = z.object({
   status: z.enum(["ARRIVED", "IN_CONSULTATION", "COMPLETED", "CANCELLED", "NO_SHOW"]),
@@ -70,21 +70,12 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
         ]);
         if (!clinic || !doctor) return { error: "The doctor schedule is unavailable." as const, status: 409 };
 
-        let localStart: ReturnType<typeof localScheduleTime>;
-        let localEnd: ReturnType<typeof localScheduleTime>;
+        let hasWorkingHours: boolean;
         try {
-          localStart = localScheduleTime(startsAt, clinic.timezone);
-          localEnd = localScheduleTime(endsAt, clinic.timezone);
+          hasWorkingHours = fitsAvailability(doctor.availability, startsAt, endsAt, clinic.timezone);
         } catch {
           return { error: "The clinic timezone is not configured correctly." as const, status: 500 };
-          
         }
-        const hasWorkingHours = doctor.availability.some((slot) =>
-          slot.weekday === localStart.weekday &&
-          localEnd.weekday === localStart.weekday &&
-          slot.startsAt <= localStart.time &&
-          slot.endsAt >= localEnd.time,
-        );
         if (!hasWorkingHours || doctor.exceptions.length > 0) {
           return { error: "The selected time is outside this doctor’s availability." as const, status: 409 };
         }

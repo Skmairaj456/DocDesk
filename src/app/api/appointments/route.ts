@@ -2,7 +2,8 @@ import { AppointmentSource, AppointmentStatus, ClinicRole, FollowUpStatus, Follo
 import { z } from "zod";
 import { AuthenticationError, requireClinicUser, type ClinicContext } from "@/lib/auth";
 import { withClinic } from "@/lib/tenant-db";
-import { clinicLocalDate, localDayBounds, localScheduleTime } from "@/lib/booking-time.mjs";
+import { clinicLocalDate, localDayBounds } from "@/lib/booking-time.mjs";
+import { fitsAvailability } from "@/lib/slots";
 
 const appointmentInput = z.object({
   patientId: z.string().uuid(),
@@ -250,14 +251,7 @@ export async function POST(request: Request) {
       if (Math.round((endsAt.valueOf() - startsAt.valueOf()) / 60_000) !== doctor.consultationMinutes) {
         return { error: `This doctor books ${doctor.consultationMinutes}-minute visits.` as const };
       }
-      const localStart = localScheduleTime(startsAt, clinic.timezone);
-      const localEnd = localScheduleTime(endsAt, clinic.timezone);
-      const hasWorkingHours = doctor.availability.some((slot) =>
-        slot.weekday === localStart.weekday &&
-        localEnd.weekday === localStart.weekday &&
-        slot.startsAt <= localStart.time &&
-        slot.endsAt >= localEnd.time,
-      );
+      const hasWorkingHours = fitsAvailability(doctor.availability, startsAt, endsAt, clinic.timezone);
       if (!hasWorkingHours || doctor.exceptions.length > 0) {
         return { error: "The selected time is outside this doctor’s availability." as const };
       }

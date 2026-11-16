@@ -3,7 +3,7 @@ import { z } from "zod";
 import { AuthenticationError, requireClinicUser } from "@/lib/auth";
 import { loadSchedulePool, slotsForDate } from "@/lib/booking-service";
 import { withClinic } from "@/lib/tenant-db";
-import { sessionOfInstant } from "@/lib/whatsapp/sessions";
+import { sessionOfSlot } from "@/lib/whatsapp/sessions";
 
 // Free times for one doctor on one day, computed the same way as the WhatsApp booking flow
 // (working hours, leave, booked appointments and active holds).
@@ -28,7 +28,7 @@ export async function GET(request: Request) {
       return slotsForDate(pool, date, now).map((slot) => ({
         startsAt: slot.startsAt.toISOString(),
         endsAt: slot.endsAt.toISOString(),
-        session: sessionOfInstant(slot.startsAt, pool.timezone),
+        session: sessionOfSlot(slot.startsAt, date, pool.timezone),
       }));
     });
     if (!result) return Response.json({ error: "This doctor is not available in that department." }, { status: 404 });

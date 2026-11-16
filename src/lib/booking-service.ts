@@ -1,6 +1,5 @@
 import { AppointmentSource, AppointmentStatus, FollowUpStatus, HoldStatus, Prisma, VisitType } from "@prisma/client";
-import { localScheduleTime } from "@/lib/booking-time.mjs";
-import { computeSlots, type DoctorSchedule, type Interval, type Slot } from "@/lib/slots";
+import { computeSlots, fitsAvailability, type DoctorSchedule, type Interval, type Slot } from "@/lib/slots";
 import { addDays } from "@/lib/whatsapp/text";
 
 export type Tx = Prisma.TransactionClient;
@@ -162,15 +161,7 @@ export async function createHold(
   if (Math.round((input.endsAt.valueOf() - input.startsAt.valueOf()) / 60_000) !== doctor.consultationMinutes) {
     return { ok: false, reason: "INVALID_SLOT" };
   }
-  const localStart = localScheduleTime(input.startsAt, clinic.timezone);
-  const localEnd = localScheduleTime(input.endsAt, clinic.timezone);
-  const insideWorkingHours = doctor.availability.some(
-    (window) =>
-      window.weekday === localStart.weekday &&
-      localEnd.weekday === localStart.weekday &&
-      window.startsAt <= localStart.time &&
-      window.endsAt >= localEnd.time,
-  );
+  const insideWorkingHours = fitsAvailability(doctor.availability, input.startsAt, input.endsAt, clinic.timezone);
   if (!insideWorkingHours || doctor.exceptions.length > 0) return { ok: false, reason: "INVALID_SLOT" };
 
   const expiresAt = new Date(now.valueOf() + HOLD_MINUTES * 60_000);

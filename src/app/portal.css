@@ -345,6 +345,7 @@
 .slot-picker-times button:hover { border-color: #9db6e4; color: #254d99; }
 .slot-picker-times button.selected { background: #2f64cf; border-color: #2f64cf; color: white; }
 .slot-picker-times button:focus-visible { outline: 2px solid #9db6e4; outline-offset: 2px; }
+.slot-picker-next-day { font-size: 11px; opacity: 0.75; }
 @media (max-width: 640px) {
   .slot-picker { padding: 12px; }
   .slot-picker-times button { flex: 1 0 calc(33% - 8px); min-width: 0; }

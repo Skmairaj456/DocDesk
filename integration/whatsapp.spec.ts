@@ -197,8 +197,9 @@ describe("WhatsApp conversation engine (real PostgreSQL)", () => {
     const patients = await Promise.all(
       [1, 2].map((n) => prisma.patient.create({ data: { clinicId, fullName: `Race ${n}`, normalizedName: `race ${n}`, phone: `+9100${n}${run}`, normalizedPhone: `00${n}${run}` } })),
     );
-    const startsAt = new Date(Date.now() + 3 * 24 * 60 * 60_000);
-    startsAt.setUTCMinutes(0, 0, 0);
+    // 10 AM clinic time, three days ahead: inside the doctor's hours whatever time the test runs.
+    const day = new Date(Date.now() + 3 * 24 * 60 * 60_000).toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
+    const startsAt = new Date(`${day}T10:00:00+05:30`);
     const endsAt = new Date(startsAt.valueOf() + 30 * 60_000);
     const attempts = await Promise.all(
       patients.map((patient) =>

@@ -14,6 +14,11 @@ function timeLabel(iso: string, timezone: string) {
   return new Intl.DateTimeFormat("en", { timeZone: timezone, hour: "numeric", minute: "2-digit" }).format(new Date(iso));
 }
 
+// Evening sessions can run past midnight; those times fall on the next calendar day.
+function isNextDay(iso: string, date: string, timezone: string) {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: timezone, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(iso)) !== date;
+}
+
 // Shows the doctor's free times for one day as buttons, grouped by session.
 export default function SlotPicker(props: {
   doctorId: string;
@@ -72,6 +77,7 @@ export default function SlotPicker(props: {
                 return (
                   <button key={slot.startsAt} type="button" role="radio" aria-checked={selected} className={selected ? "selected" : ""} onClick={() => onChange(slot)}>
                     {timeLabel(slot.startsAt, timezone)}
+                    {isNextDay(slot.startsAt, date, timezone) && <small className="slot-picker-next-day"> next day</small>}
                   </button>
                 );
               })}
