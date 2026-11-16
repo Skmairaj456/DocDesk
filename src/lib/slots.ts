@@ -1,4 +1,4 @@
-import { localDateTimeAsUtc, localScheduleTime } from "./booking-time.mjs";
+import { clinicLocalDate, localDateTimeAsUtc, localScheduleTime } from "./booking-time.mjs";
 
 export type AvailabilityWindow = { weekday: number; startsAt: string; endsAt: string };
 export type Interval = { startsAt: Date; endsAt: Date };
@@ -26,11 +26,13 @@ export function weekdayOf(date: string): number {
   return ((new Date(`${date}T00:00:00Z`).getUTCDay() + 6) % 7) + 1;
 }
 
-function nextDate(date: string): string {
-  const next = new Date(`${date}T00:00:00Z`);
-  next.setUTCDate(next.getUTCDate() + 1);
-  return next.toISOString().slice(0, 10);
+function shiftDate(date: string, days: number): string {
+  const shifted = new Date(`${date}T00:00:00Z`);
+  shifted.setUTCDate(shifted.getUTCDate() + days);
+  return shifted.toISOString().slice(0, 10);
 }
+const nextDate = (date: string) => shiftDate(date, 1);
+const previousDate = (date: string) => shiftDate(date, -1);
 
 const DAY_MINUTES = 24 * 60;
 
@@ -98,4 +100,15 @@ export function computeSlots(input: {
     }
   }
   return slots.sort((a, b) => a.startsAt.valueOf() - b.startsAt.valueOf());
+}
+
+// The free times offered on one day's list. A past-midnight evening's late slots normally sit on
+// the evening's own day (Monday's list shows Tuesday 12:30 AM). Once that evening's day is over,
+// its list can no longer be chosen, so today's list also offers what is still left of last night.
+export function computeDaySlots(input: Parameters<typeof computeSlots>[0]): Slot[] {
+  const own = computeSlots(input);
+  if (clinicLocalDate(input.now, input.timezone) !== input.date) return own;
+  const lastNight = computeSlots({ ...input, date: previousDate(input.date) })
+    .filter((slot) => clinicLocalDate(slot.startsAt, input.timezone) === input.date);
+  return [...lastNight, ...own].sort((a, b) => a.startsAt.valueOf() - b.startsAt.valueOf());
 }

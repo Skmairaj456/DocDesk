@@ -31,10 +31,14 @@ export function sessionOfInstant(date: Date, timeZone: string): SessionId {
   return sessionOfClock(localScheduleTime(date, timeZone).time);
 }
 
-// The session a slot is offered in on a given day's list. A slot after midnight on that list
-// comes from the evening window running past midnight, so it stays in the evening.
+// The session a slot is offered in on a given day's list. Slots after midnight come from an
+// evening window running past midnight, so they stay in the evening: on the evening's own list
+// (dated the next day) and on today's list while last night's session is still running.
+const EARLY_HOURS_END = 6 * 60;
 export function sessionOfSlot(startsAt: Date, listDate: string, timeZone: string): SessionId {
-  return clinicLocalDate(startsAt, timeZone) === listDate ? sessionOfInstant(startsAt, timeZone) : "evening";
+  if (clinicLocalDate(startsAt, timeZone) !== listDate) return "evening";
+  const local = localScheduleTime(startsAt, timeZone).time;
+  return toMinutes(local) < EARLY_HOURS_END ? "evening" : sessionOfClock(local);
 }
 
 export function isSessionId(value: string | undefined): value is SessionId {

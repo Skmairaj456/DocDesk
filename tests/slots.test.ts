@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { computeSlots, fitsAvailability, windowSpan } from "../src/lib/slots.ts";
+import { computeDaySlots, computeSlots, fitsAvailability, windowSpan } from "../src/lib/slots.ts";
 import { sessionHours, sessionOfSlot } from "../src/lib/whatsapp/sessions.ts";
 
 const timezone = "Asia/Kolkata";
@@ -30,6 +30,19 @@ describe("Working windows past midnight", () => {
 
     const tuesday = computeSlots({ timezone, date: "2026-11-17", doctor, busy: [], exceptions: [], now: new Date("2026-11-01T00:00:00Z") });
     assert.equal(tuesday.length, 0, "Monday night's slots are not offered again on Tuesday");
+  });
+
+  it("offers what is left of last night's session on today's list", () => {
+    const doctor = { doctorId: "d", name: "Dr. Test", minutes: 30, availability: lateEvening };
+    const now = ist("2026-11-17", "00:04"); // Tuesday 12:04 AM, Monday's evening still running
+    const today = computeDaySlots({ timezone, date: "2026-11-17", doctor, busy: [], exceptions: [], now });
+    assert.deepEqual(today.map((slot) => slot.startsAt), [ist("2026-11-17", "00:30")], "12:30 AM tonight; 12:00 is under the 15-minute lead");
+    assert.equal(sessionOfSlot(today[0].startsAt, "2026-11-17", timezone), "evening");
+
+    const later = computeDaySlots({ timezone, date: "2026-11-24", doctor, busy: [], exceptions: [], now });
+    assert.equal(later.length, 0, "a future day's list does not repeat the night before it");
+    const monday = computeDaySlots({ timezone, date: "2026-11-16", doctor, busy: [], exceptions: [], now: ist("2026-11-16", "20:00") });
+    assert.equal(monday.at(-1)!.startsAt.valueOf(), ist("2026-11-17", "00:30").valueOf(), "Monday's own list still shows its late slots");
   });
 
   it("skips after-midnight slots that are already booked", () => {

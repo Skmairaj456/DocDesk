@@ -1,5 +1,5 @@
 import { AppointmentSource, AppointmentStatus, FollowUpStatus, HoldStatus, Prisma, VisitType } from "@prisma/client";
-import { computeSlots, fitsAvailability, type DoctorSchedule, type Interval, type Slot } from "@/lib/slots";
+import { computeDaySlots, fitsAvailability, type DoctorSchedule, type Interval, type Slot } from "@/lib/slots";
 import { addDays } from "@/lib/whatsapp/text";
 
 export type Tx = Prisma.TransactionClient;
@@ -110,7 +110,7 @@ export async function loadSchedulePool(
 
 export function slotsForDate(pool: SchedulePool, date: string, now = new Date()): Slot[] {
   const all = pool.doctors.flatMap((doctor) =>
-    computeSlots({
+    computeDaySlots({
       timezone: pool.timezone,
       date,
       doctor,
