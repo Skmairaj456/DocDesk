@@ -37,20 +37,22 @@ export async function requireClinicUser(allowedRoles?: ClinicRole[]): Promise<Cl
     throw new AuthenticationError("Development demo accounts are not enabled in production.", 403);
   }
 
-  const user = await prisma.$transaction(async (tx) => {
+  const requestedClinicId = (await cookies()).get("docdesk-clinic")?.value;
+
+  // One transaction (one pooled connection) for the whole lookup: each request used to open three
+  // in a row, and under load the extra waits for a connection ran past Prisma's 2-second default.
+  return prisma.$transaction(async (tx) => {
     await tx.$queryRaw`SELECT set_config('app.auth_subject', ${data.user.id}, true)`;
-    return tx.user.findUnique({
+    const user = await tx.user.findUnique({
       where: { authSubject: data.user.id },
       select: { id: true },
     });
-  });
-  if (!user) {
-    throw new AuthenticationError("Your account has not been invited to a clinic.", 403);
-  }
+    if (!user) {
+      throw new AuthenticationError("Your account has not been invited to a clinic.", 403);
+    }
 
-  const memberships = await prisma.$transaction(async (tx) => {
     await tx.$queryRaw`SELECT set_config('app.user_id', ${user.id}, true)`;
-    return tx.membership.findMany({
+    const memberships = await tx.membership.findMany({
       where: { userId: user.id, isActive: true },
       select: {
         id: true,
@@ -58,44 +60,39 @@ export async function requireClinicUser(allowedRoles?: ClinicRole[]): Promise<Cl
         role: true,
       },
     });
-  });
-  if (memberships.length === 0) {
-    throw new AuthenticationError("Your clinic membership is inactive or missing.", 403);
-  }
+    if (memberships.length === 0) {
+      throw new AuthenticationError("Your clinic membership is inactive or missing.", 403);
+    }
 
-  const cookieStore = await cookies();
-  const requestedClinicId = cookieStore.get("docdesk-clinic")?.value;
-  const membership = requestedClinicId
-    ? memberships.find((entry) => entry.clinicId === requestedClinicId)
-    : memberships.length === 1
-      ? memberships[0]
-      : undefined;
-  if (!membership) {
-    throw new AuthenticationError("Select a clinic membership before continuing.", 403);
-  }
-  if (allowedRoles && !allowedRoles.includes(membership.role)) {
-    throw new AuthenticationError("Your clinic role does not allow this action.", 403);
-  }
-  const context: ClinicContext = {
-    userId: user.id,
-    authSubject: data.user.id,
-    clinicId: membership.clinicId,
-    role: membership.role,
-    doctorProfileId: null,
-  };
-  if (membership.role === ClinicRole.DOCTOR) {
-    const doctor = await prisma.$transaction(async (tx) => {
+    const membership = requestedClinicId
+      ? memberships.find((entry) => entry.clinicId === requestedClinicId)
+      : memberships.length === 1
+        ? memberships[0]
+        : undefined;
+    if (!membership) {
+      throw new AuthenticationError("Select a clinic membership before continuing.", 403);
+    }
+    if (allowedRoles && !allowedRoles.includes(membership.role)) {
+      throw new AuthenticationError("Your clinic role does not allow this action.", 403);
+    }
+    const context: ClinicContext = {
+      userId: user.id,
+      authSubject: data.user.id,
+      clinicId: membership.clinicId,
+      role: membership.role,
+      doctorProfileId: null,
+    };
+    if (membership.role === ClinicRole.DOCTOR) {
       await tx.$queryRaw`SELECT set_config('app.clinic_id', ${context.clinicId}, true)`;
-      await tx.$queryRaw`SELECT set_config('app.user_id', ${context.userId}, true)`;
-      return tx.doctorProfile.findFirst({
+      const doctor = await tx.doctorProfile.findFirst({
         where: { membershipId: membership.id, clinicId: context.clinicId },
         select: { id: true },
       });
-    });
-    if (!doctor) {
-      throw new AuthenticationError("A doctor profile is required for this account.", 403);
+      if (!doctor) {
+        throw new AuthenticationError("A doctor profile is required for this account.", 403);
+      }
+      context.doctorProfileId = doctor.id;
     }
-    context.doctorProfileId = doctor.id;
-  }
-  return context;
+    return context;
+  }, { maxWait: 10_000, timeout: 15_000 });
 }
