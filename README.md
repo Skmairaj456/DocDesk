@@ -1,6 +1,6 @@
-# DocDesk
+# Practice Up
 
-DocDesk is a clinic-operations MVP built with Next.js App Router, TypeScript, Supabase Auth, Prisma, and PostgreSQL. It focuses on a reception schedule, patient contact records, a doctor queue, follow-up tracking, and a clearly labelled WhatsApp development simulator.
+Practice Up ("Connect Beyond Consultation") is a clinic-operations MVP built with Next.js App Router, TypeScript, Supabase Auth, Prisma, and PostgreSQL. It focuses on a reception schedule, patient contact records, a doctor queue, follow-up tracking, and a clearly labelled WhatsApp development simulator.
 
 > **Pilot status:** this is an early MVP, not a production-ready clinical system. The local simulator uses fictional in-memory records. Live access requires external Supabase and PostgreSQL setup. Complete the security review, privacy/compliance assessment, operational setup, and pilot acceptance testing before using real patient data.
 

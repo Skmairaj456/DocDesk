@@ -361,3 +361,12 @@
 .arrival-no:hover:not(:disabled) { background: #fde0dd; }
 .arrival-no:disabled { background: #f6f7f9; border-color: #e4e8ee; color: #a8b1be; cursor: not-allowed; }
 .live-status.no-show, .doctor-status.no-show { background: #f1f2f5; color: #6b7585; }
+
+/* Practice Up wordmark in headers and sign-in cards */
+.brand-logo { display: block; height: auto; max-width: 100%; }
+.doctor-brand .brand-logo, .live-brand .brand-logo { height: 40px; width: auto; }
+.brand .brand-logo { height: 38px; width: auto; }
+.setup-logo { height: 52px; margin-bottom: 22px; width: auto; }
+@media (max-width: 640px) {
+  .doctor-brand .brand-logo, .live-brand .brand-logo { height: 32px; }
+}

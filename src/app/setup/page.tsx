@@ -1,10 +1,12 @@
-export const metadata = { title: "Setup | DocDesk" };
+import BrandLogo from "@/components/brand-logo";
+
+export const metadata = { title: "Setup | Practice Up" };
 
 export default function SetupPage() {
   return (
     <main className="setup-screen">
       <article className="setup-card setup-guide">
-        <span className="brand-mark">d.</span>
+        <BrandLogo className="setup-logo" height={52} />
         <p className="eyebrow">LOCAL DEVELOPMENT</p>
         <h1>Connect your clinic workspace</h1>
         <p>Production clinic data is never replaced with sample records. Configure a Supabase project to enable authenticated database access.</p>

@@ -130,7 +130,7 @@ async function prompt(c: Ctx, state: S, prefix = ""): Promise<void> {
     case S.MAIN_MENU: {
       const patient = await patientOf(c);
       const greeting = patient ? `Hi ${firstName(patient.fullName)}! 👋` : "Hi! 👋";
-      const intro = prefix ? "" : `${greeting} Welcome to ${c.clinic.name}. I'm DocDesk, your clinic assistant.\n\n`;
+      const intro = prefix ? "" : `${greeting} Welcome to ${c.clinic.name}. I'm the Practice Up assistant for the clinic.\n\n`;
       say(c, `${lead}${intro}How can I help you today?`, MAIN_MENU);
       return;
     }

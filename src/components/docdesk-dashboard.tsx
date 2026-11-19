@@ -29,6 +29,7 @@ import {
   X,
 } from "lucide-react";
 import { FormEvent, useMemo, useState } from "react";
+import BrandLogo from "@/components/brand-logo";
 
 type Section = "today" | "patients" | "whatsapp" | "queue" | "follow-ups";
 type VisitStatus = "Booked" | "Arrived" | "In consultation" | "Completed";
@@ -341,8 +342,7 @@ export default function DocDeskDashboard() {
   const sidebar = (
     <>
       <div className="brand">
-        <span className="brand-mark">d.</span>
-        <div><strong>docdesk</strong><span>CLINIC WORKSPACE</span></div>
+        <div><BrandLogo height={38} /><span>CLINIC WORKSPACE</span></div>
         <button className="mobile-close icon-button" aria-label="Close navigation" onClick={() => setMobileMenu(false)}><X size={18} /></button>
       </div>
       <div className="clinic-select">
@@ -499,11 +499,11 @@ export default function DocDeskDashboard() {
                 <div className="context-patient"><span className="chat-avatar lavender">PN</span><strong>Priya Nair</strong><small>Sample patient · not verified</small><button className="button button-outline button-small" onClick={() => notify("Identity verification and appointment details are not active in demo mode.")}>Verify identity</button></div>
                 <div className="context-section"><p className="context-label">CONTACT</p><div className="context-detail"><span>Phone</span><strong>+91 98670 12345</strong></div></div>
                 <div className="context-section"><p className="context-label">NEXT APPOINTMENT</p><div className="appointment-context"><CalendarDays size={16} /><div><strong>Cardiology · Follow-up</strong><small>Today, 10:30 AM · Dr. Aditi Rao</small></div><span className="context-status">Booked</span></div></div>
-                <div className="context-section"><p className="context-label">CONVERSATION</p><div className="context-detail"><span>Assigned to</span><strong>{handover ? "Maya Reddy" : "DocDesk assistant"}</strong></div><button className="context-action" onClick={() => notify("This conversation is sample data only.")}>View patient record <ArrowRight size={14} /></button></div>
+                <div className="context-section"><p className="context-label">CONVERSATION</p><div className="context-detail"><span>Assigned to</span><strong>{handover ? "Maya Reddy" : "Practice Up assistant"}</strong></div><button className="context-action" onClick={() => notify("This conversation is sample data only.")}>View patient record <ArrowRight size={14} /></button></div>
               </aside>
             </div>
           )}
-          <footer className="app-footer"><span>DocDesk <span>·</span> Clinic operations, made calmer.</span><span><ShieldCheck size={13} /> This workspace is a local development simulator.</span></footer>
+          <footer className="app-footer"><span>Practice Up <span>·</span> Connect beyond consultation.</span><span><ShieldCheck size={13} /> This workspace is a local development simulator.</span></footer>
         </div>
       </main>
 

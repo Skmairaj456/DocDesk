@@ -3,8 +3,8 @@ import "./globals.css";
 import "./portal.css";
 
 export const metadata: Metadata = {
-  title: "DocDesk | Clinic operations",
-  description: "A calmer workspace for clinic reception and care teams.",
+  title: "Practice Up | Clinic operations",
+  description: "Practice Up: connect beyond consultation. A workspace for clinic reception and care teams.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

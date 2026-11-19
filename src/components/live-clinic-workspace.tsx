@@ -8,6 +8,7 @@ import AppointmentList from "@/components/appointment-list";
 import PatientProfile, { type PatientProfileData } from "@/components/patient-profile";
 import SlotPicker, { type FreeSlot } from "@/components/slot-picker";
 import ArrivalPrompt from "@/components/arrival-prompt";
+import BrandLogo from "@/components/brand-logo";
 
 const AppointmentStatus = {
   BOOKED: "BOOKED",
@@ -297,7 +298,7 @@ export default function LiveClinicWorkspace(initialData: LiveWorkspaceData) {
   return (
     <main className="live-workspace">
       <header className="live-header">
-        <div className="live-brand"><span className="brand-mark">d.</span><span><strong>docdesk</strong><small>{initialData.clinicName}</small></span></div>
+        <div className="live-brand"><span><BrandLogo /><small>{initialData.clinicName}</small></span></div>
         <div className="live-account"><span className="live-secure">Secure clinic records</span><span className="live-role">{initialData.role.toLowerCase()}</span><form action="/auth/sign-out" method="post"><button className="button button-quiet" type="submit">Sign out</button></form></div>
       </header>
       <div className="live-body">

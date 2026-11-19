@@ -7,6 +7,7 @@ import { withClinic } from "@/lib/tenant-db";
 import DocDeskDashboard from "@/components/docdesk-dashboard";
 import DoctorWorkspace from "@/components/doctor-workspace";
 import LiveClinicWorkspace from "@/components/live-clinic-workspace";
+import BrandLogo from "@/components/brand-logo";
 
 export const instant = false;
 
@@ -131,8 +132,8 @@ function SetupRequired() {
   return (
     <main className="setup-screen">
       <div className="setup-card">
-        <span className="brand-mark">d.</span>
-        <p className="eyebrow">DOC DESK · SETUP REQUIRED</p>
+        <BrandLogo className="setup-logo" height={52} />
+        <p className="eyebrow">PRACTICE UP · SETUP REQUIRED</p>
         <h1>Connect your clinic workspace</h1>
         <p>
           Live clinic access requires Supabase Auth and PostgreSQL. Configure

@@ -9,6 +9,7 @@ import type { LiveWorkspaceData } from "@/components/live-clinic-workspace";
 import RecentBookings, { bookingDay } from "@/components/recent-bookings";
 import { localDateTimeAsUtc } from "@/lib/booking-time.mjs";
 import type { AssessmentHistoryEntry } from "@/lib/clinical-assessment-service";
+import BrandLogo from "@/components/brand-logo";
 
 type Appointment = LiveWorkspaceData["appointments"][number];
 type ConsultationData = {
@@ -489,7 +490,7 @@ export default function DoctorWorkspace(initialData: LiveWorkspaceData) {
   return (
     <main className="doctor-app">
       <header className="doctor-header">
-        <Link className="doctor-brand" href="/" aria-label="DocDesk doctor home"><span className="brand-mark">d.</span><span><strong>docdesk</strong><small>DOCTOR WORKSPACE</small></span></Link>
+        <Link className="doctor-brand" href="/" aria-label="Practice Up doctor home"><span><BrandLogo /><small>DOCTOR WORKSPACE</small></span></Link>
         <div className="doctor-account"><span className="doctor-clinic">{initialData.clinicName}</span><span className="doctor-avatar">{doctor?.name.split(" ").slice(-1)[0]?.[0] ?? "D"}</span><form action="/auth/sign-out" method="post"><button className="button button-quiet" type="submit">Sign out</button></form></div>
       </header>
       <div className="doctor-content">
@@ -678,7 +679,7 @@ export default function DoctorWorkspace(initialData: LiveWorkspaceData) {
           </section>
         )}
 
-        <footer className="doctor-footer"><span>DocDesk · care stays connected</span><span>Clinical notes are visible only to authorized clinicians.</span></footer>
+        <footer className="doctor-footer"><span>Practice Up · connect beyond consultation</span><span>Clinical notes are visible only to authorized clinicians.</span></footer>
       </div>
 
       {selectedAppointment && patientRecord && (
